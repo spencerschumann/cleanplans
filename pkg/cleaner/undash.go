@@ -100,7 +100,7 @@ func Undash(svg *SVGXMLNode) {
 	// Group children by category
 	groups := map[Category][]*SVGXMLNode{}
 	for _, node := range svg.Children {
-		groups[node.category] = append(groups[node.category], node)
+		groups[node.Category] = append(groups[node.Category], node)
 	}
 
 	var tree *pathTree
@@ -159,13 +159,13 @@ func Undash(svg *SVGXMLNode) {
 		mergeCounts = map[*svgpath.SubPath]int{}
 
 		for _, node := range groups[category] {
-			for _, path := range node.path {
+			for _, path := range node.Path {
 				tree.addPath(path)
 			}
 		}
 
 		for _, node := range groups[category] {
-			for _, path := range node.path {
+			for _, path := range node.Path {
 				// Skip paths that have already been merged
 				if len(path.DrawTo) == 0 {
 					continue
@@ -187,7 +187,7 @@ func Undash(svg *SVGXMLNode) {
 
 	// Check for possible loops, and join the ends
 	for _, node := range svg.Children {
-		for _, path := range node.path {
+		for _, path := range node.Path {
 			// Require at least 4 dashes for a path that forms a loop
 			if mergeCounts[path] >= 3 && len(path.DrawTo) >= 4 {
 				sx, sy := path.StartPoint()

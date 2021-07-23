@@ -11,6 +11,10 @@ import (
 // TODO: why do the functions in this file deserve to be in the file
 // that bears the package's name?
 
+func (s *SVGXMLNode) HeightInMM() float64 {
+	return s.heightInMM
+}
+
 func shouldKeepPath(path []*svgpath.SubPath) bool {
 	if len(path) == 0 {
 		return false
@@ -83,11 +87,11 @@ func (svg *SVGXMLNode) FilteredAbsoluteMM() {
 			// TODO: wrong way to handle these errors
 			log.Fatalf("failed to parse path: %s", err)
 		}
-		node.path = path
+		node.Path = path
 
-		node.category = classifyStroke(node.Style("stroke"))
+		node.Category = classifyStroke(node.Style("stroke"))
 
-		if shouldKeepFill(node.Style("fill")) && node.category != CategoryNone && shouldKeepPath(path) {
+		if shouldKeepFill(node.Style("fill")) && node.Category != CategoryNone && shouldKeepPath(path) {
 			// Scale the stroke width appropriately
 			width := 0.0
 			strokeWidth := node.Style("stroke-width")
@@ -163,7 +167,7 @@ func (svg *SVGXMLNode) RotateAndCenter(widthInMM, heightInMM float64) {
 		}
 
 		for _, node := range svg.Children {
-			for _, path := range node.path {
+			for _, path := range node.Path {
 				path.X, path.Y = rotate(path.X, path.Y)
 				for _, drawTo := range path.DrawTo {
 					drawTo.X, drawTo.Y = rotate(drawTo.X, drawTo.Y)
@@ -188,7 +192,7 @@ func (svg *SVGXMLNode) RotateAndCenter(widthInMM, heightInMM float64) {
 		return x + dx, y + dy
 	}
 	for _, node := range svg.Children {
-		for _, path := range node.path {
+		for _, path := range node.Path {
 			path.X, path.Y = translate(path.X, path.Y)
 			for _, drawTo := range path.DrawTo {
 				drawTo.X, drawTo.Y = translate(drawTo.X, drawTo.Y)

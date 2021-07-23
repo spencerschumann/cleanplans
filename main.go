@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"cleanplans/pkg/cleaner"
+	"cleanplans/pkg/gcode"
 )
 
 func main() {
@@ -35,9 +36,13 @@ func main() {
 	cleaner.Undash(svg)
 	cleaner.Simplify(svg)
 
-	outXML, err := svg.Marshal()
-	if err != nil {
-		log.Fatalf("marshal error: %s", err)
-	}
-	fmt.Println(string(outXML))
+	gcode.Generate(svg)
+
+	/*
+		outXML, err := svg.Marshal()
+		if err != nil {
+			log.Fatalf("marshal error: %s", err)
+		}
+		fmt.Println(string(outXML))
+	*/
 }

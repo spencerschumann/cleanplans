@@ -20,40 +20,41 @@ type SVGXMLNode struct {
 	Children  []*SVGXMLNode `xml:",any"`
 
 	// inkscape-specific data; inkscape crashes if an extension doesn't preserve the namedview element.
-	Docname string `xml:"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd docname,attr,omitempty"`
+	Docname   string     `xml:"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd docname,attr,omitempty"`
 	NamedView *NamedView `xml:"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd namedview,omitempty"`
+
+	Category Category           `xml:"-"`
+	Path     []*svgpath.SubPath `xml:"-"`
 
 	style          map[string]string
 	styleNameOrder map[string]int
-	category       Category
-	path           []*svgpath.SubPath
 	widthInMM      float64
 	heightInMM     float64
 	baseUnits      string
 }
 
 type NamedView struct {
-	ID string `xml:"id,attr,omitempty"`
-	PageColor string `xml:"pagecolor,attr,omitempty"`
-	BorderColor string `xml:"bordercolor,attr,omitempty"`
-	BorderOpacity string `xml:"borderopacity,attr,omitempty"`
-	ObjectTolerance string `xml:"objecttolerance,attr,omitempty"`
-	GridTolerance string `xml:"gridtolerance,attr,omitempty"`
-	ShowGrid string `xml:"showgrid,attr,omitempty"`
-	GuideTolerance string `xml:"guidetolerance,attr,omitempty"`
-	PageShadow string `xml:"http://www.inkscape.org/namespaces/inkscape pageshadow,attr,omitempty"`
-	PageOpacity string `xml:"http://www.inkscape.org/namespaces/inkscape pageopacity,attr,omitempty"`
+	ID               string `xml:"id,attr,omitempty"`
+	PageColor        string `xml:"pagecolor,attr,omitempty"`
+	BorderColor      string `xml:"bordercolor,attr,omitempty"`
+	BorderOpacity    string `xml:"borderopacity,attr,omitempty"`
+	ObjectTolerance  string `xml:"objecttolerance,attr,omitempty"`
+	GridTolerance    string `xml:"gridtolerance,attr,omitempty"`
+	ShowGrid         string `xml:"showgrid,attr,omitempty"`
+	GuideTolerance   string `xml:"guidetolerance,attr,omitempty"`
+	PageShadow       string `xml:"http://www.inkscape.org/namespaces/inkscape pageshadow,attr,omitempty"`
+	PageOpacity      string `xml:"http://www.inkscape.org/namespaces/inkscape pageopacity,attr,omitempty"`
 	PageCheckerBoard string `xml:"http://www.inkscape.org/namespaces/inkscape pagecheckerboard,attr,omitempty"`
-	DocumentUnits string `xml:"http://www.inkscape.org/namespaces/inkscape document-units,attr,omitempty"`
-	Zoom string `xml:"http://www.inkscape.org/namespaces/inkscape zoom,attr,omitempty"`
-	CX string `xml:"http://www.inkscape.org/namespaces/inkscape cx,attr,omitempty"`
-	CY string `xml:"http://www.inkscape.org/namespaces/inkscape cy,attr,omitempty"`
-	WindowWidth string `xml:"http://www.inkscape.org/namespaces/inkscape window-width,attr,omitempty"`
-	WindowHeight string `xml:"http://www.inkscape.org/namespaces/inkscape window-height,attr,omitempty"`
-	WindowX string `xml:"http://www.inkscape.org/namespaces/inkscape window-x,attr,omitempty"`
-	WindowY string `xml:"http://www.inkscape.org/namespaces/inkscape window-y,attr,omitempty"`
-	WindowMaximized string `xml:"http://www.inkscape.org/namespaces/inkscape window-maximized,attr,omitempty"`
-	CurrentLayer string `xml:"http://www.inkscape.org/namespaces/inkscape current-layer,attr,omitempty"`
+	DocumentUnits    string `xml:"http://www.inkscape.org/namespaces/inkscape document-units,attr,omitempty"`
+	Zoom             string `xml:"http://www.inkscape.org/namespaces/inkscape zoom,attr,omitempty"`
+	CX               string `xml:"http://www.inkscape.org/namespaces/inkscape cx,attr,omitempty"`
+	CY               string `xml:"http://www.inkscape.org/namespaces/inkscape cy,attr,omitempty"`
+	WindowWidth      string `xml:"http://www.inkscape.org/namespaces/inkscape window-width,attr,omitempty"`
+	WindowHeight     string `xml:"http://www.inkscape.org/namespaces/inkscape window-height,attr,omitempty"`
+	WindowX          string `xml:"http://www.inkscape.org/namespaces/inkscape window-x,attr,omitempty"`
+	WindowY          string `xml:"http://www.inkscape.org/namespaces/inkscape window-y,attr,omitempty"`
+	WindowMaximized  string `xml:"http://www.inkscape.org/namespaces/inkscape window-maximized,attr,omitempty"`
+	CurrentLayer     string `xml:"http://www.inkscape.org/namespaces/inkscape current-layer,attr,omitempty"`
 }
 
 func Parse(data []byte) (*SVGXMLNode, error) {
@@ -68,7 +69,7 @@ func (n *SVGXMLNode) Bounds() (minX, minY, maxX, maxY float64) {
 	minY = math.Inf(1)
 	maxY = math.Inf(-1)
 	for _, node := range n.Children {
-		for _, path := range node.path {
+		for _, path := range node.Path {
 			// TODO: this just tracks start/end; this is correct for lines
 			// but not for curves.
 			lastX, lastY := path.EndPoint()
@@ -85,13 +86,13 @@ func (n *SVGXMLNode) RemoveEmptyPaths() {
 	nodeIndex := 0
 	for _, node := range n.Children {
 		pathIndex := 0
-		for _, path := range node.path {
+		for _, path := range node.Path {
 			if len(path.DrawTo) > 0 {
-				node.path[pathIndex] = path
+				node.Path[pathIndex] = path
 				pathIndex++
 			}
 		}
-		node.path = node.path[:pathIndex]
+		node.Path = node.Path[:pathIndex]
 		if pathIndex > 0 {
 			n.Children[nodeIndex] = node
 			nodeIndex++
@@ -106,7 +107,7 @@ func (n *SVGXMLNode) Marshal() ([]byte, error) {
 	n.Height = FormatNumber(n.heightInMM) + "mm"
 	for _, child := range n.Children {
 		// Back to a path string
-		child.D = svgpath.ToString(child.path)
+		child.D = svgpath.ToString(child.Path)
 
 		// Reserialize style to capture changes
 		child.serializeStyle()

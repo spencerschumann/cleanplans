@@ -12,16 +12,22 @@ var zeroPoint = quadtree.NewPoint(0, 0, nil)
 
 type pathTree struct {
 	quadTree *quadtree.QuadTree
+	width    float64
+	height   float64
 }
 
 func newPathTree(minX, minY, maxX, maxY float64) *pathTree {
 	midX := (maxX + minX) / 2
 	midY := (maxY + minY) / 2
+	halfWidth := maxX - midX
+	halfHeight := maxY - midY
 	aabb := quadtree.NewAABB(
 		quadtree.NewPoint(midX, midY, nil),
-		quadtree.NewPoint(maxX-midX, maxY-midY, nil))
+		quadtree.NewPoint(halfWidth, halfHeight, nil))
 	return &pathTree{
 		quadTree: quadtree.New(aabb, 0, nil),
+		width:    halfWidth * 2,
+		height:   halfHeight * 2,
 	}
 }
 
@@ -61,6 +67,9 @@ func (t *pathTree) removePath(path *svgpath.SubPath) {
 			if pointX == x && pointY == y {
 				paths := points[0].Data().(map[*svgpath.SubPath]struct{})
 				delete(paths, path)
+				if len(paths) == 0 {
+					t.quadTree.Remove(points[0])
+				}
 			}
 		}
 	}
@@ -101,4 +110,32 @@ func (t *pathTree) findNeighbors(path *svgpath.SubPath, x, y, minDist, maxDist f
 		return di < dj
 	})
 	return neighbors
+}
+
+func (t *pathTree) findNearest(x, y float64, maxCount int) []*svgpath.SubPath {
+	aabb := quadtree.NewAABB(
+		quadtree.NewPoint(x, y, nil),
+		quadtree.NewPoint(t.width, t.height, nil),
+	)
+	points := t.quadTree.KNearest(aabb, maxCount+50, nil)
+
+	var nearest []*svgpath.SubPath
+	for _, point := range points {
+		paths := point.Data().(map[*svgpath.SubPath]struct{})
+		for path := range paths {
+			nearest = append(nearest, path)
+		}
+	}
+
+	sort.Slice(nearest, func(i, j int) bool {
+		di := math.Min(distance(x, y, nearest[i], true), distance(x, y, nearest[i], false))
+		dj := math.Min(distance(x, y, nearest[j], true), distance(x, y, nearest[j], false))
+		return di < dj
+	})
+
+	if len(nearest) > maxCount {
+		nearest = nearest[:maxCount]
+	}
+
+	return nearest
 }
