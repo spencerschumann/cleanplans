@@ -15,12 +15,13 @@ func SortPaths(svg *SVGXMLNode) {
 	tree := newPathTree(minX, minY, maxX, maxY)
 	sorted := []*svgpath.SubPath{}
 
-	pathStyles := map[*svgpath.SubPath]map[string]string{}
+	pathNodes := map[*svgpath.SubPath]*SVGXMLNode{}
 
 	for _, child := range svg.Children {
+		fmt.Fprintf(os.Stderr, "Pre-sort object: %s\n", child.ID)
 		for _, path := range child.Path {
 			tree.addPath(path)
-			pathStyles[path] = child.style
+			pathNodes[path] = child
 			//fmt.Fprintln(os.Stderr, "added one path to tree")
 		}
 	}
@@ -28,8 +29,9 @@ func SortPaths(svg *SVGXMLNode) {
 	x, y := 0.0, svg.HeightInMM()
 	for {
 		nearestList := tree.findNearest(x, y, 1)
-		fmt.Fprintf(os.Stderr, "findNearest %g %g returned %d\n", x, y, len(nearestList))
+		//fmt.Fprintf(os.Stderr, "findNearest %g %g returned %d\n", x, y, len(nearestList))
 		if len(nearestList) == 0 {
+			//all := tree.quadTree.Search(quadtree.NewAABB())
 			//fmt.Fprintln(os.Stderr, "findNearest returned 0 results")
 			break
 		}
@@ -38,26 +40,29 @@ func SortPaths(svg *SVGXMLNode) {
 
 		// TODO: reverse the path if the end is nearest
 		if distance(x, y, nearest, false) < distance(x, y, nearest, true) {
-			styles := pathStyles[nearest]
+			node := pathNodes[nearest]
 			nearest = nearest.Reverse()
-			pathStyles[nearest] = styles
+			pathNodes[nearest] = node
 		}
 		x, y = nearest.EndPoint()
 		sorted = append(sorted, nearest)
 	}
-	fmt.Fprintf(os.Stderr, "Total number of paths: %d\n", len(sorted))
+	//fmt.Fprintf(os.Stderr, "Total number of paths: %d\n", len(sorted))
 
 	svg.Children = nil
 	for _, path := range sorted {
+		node := pathNodes[path]
+		fmt.Fprintf(os.Stderr, "Post-sort object: %s\n", node.ID)
 		svg.Children = append(svg.Children, &SVGXMLNode{
 			XMLName: xml.Name{
 				Space: "http://www.w3.org/2000/svg",
 				Local: "path",
 			},
 			// TODO: need to keep track of categories within the tree...for now just let them all collapse into black
-			Category: CategoryFullCut,
+			Category: node.Category,
 			Path:     []*svgpath.SubPath{path},
-			style:    pathStyles[path],
+			style:    node.style,
+			ID:       node.ID,
 		})
 	}
 }

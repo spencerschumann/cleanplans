@@ -21,6 +21,11 @@ func newPathTree(minX, minY, maxX, maxY float64) *pathTree {
 	midY := (maxY + minY) / 2
 	halfWidth := maxX - midX
 	halfHeight := maxY - midY
+
+	// Add a small margin to avoid dropping objects at the edges
+	halfWidth += 10
+	halfHeight += 10
+
 	aabb := quadtree.NewAABB(
 		quadtree.NewPoint(midX, midY, nil),
 		quadtree.NewPoint(halfWidth, halfHeight, nil))
