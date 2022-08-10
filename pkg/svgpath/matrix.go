@@ -41,12 +41,17 @@ func ParseTransform(transform string) Matrix {
 				B: function.Args[1], D: function.Args[3], F: function.Args[5],
 			})
 		case "translate":
-			if len(function.Args) != 2 {
-				log.Fatalf("2 args required for translate transform, got %v", function.Args)
+			if len(function.Args) != 2 && len(function.Args) != 1 {
+				log.Fatalf("1 or 2 args required for translate transform, got %v", function.Args)
+			}
+			x := function.Args[0]
+			y := 0.0
+			if len(function.Args) == 2 {
+				y = function.Args[1]
 			}
 			m = m.Multiply(Matrix{
-				A: 1, C: 0, E: function.Args[0],
-				B: 0, D: 1, F: function.Args[1],
+				A: 1, C: 0, E: x,
+				B: 0, D: 1, F: y,
 			})
 		case "rotate":
 			//  ⎡ cos(θ)  −sin(θ)  −x⋅cos(θ)+y⋅sin(θ)+x ⎤

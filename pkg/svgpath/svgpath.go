@@ -316,6 +316,7 @@ func (s *state) parseNonNegativeNumber() (float64, error) {
 	if c == 'E' || c == 'e' {
 		s.next()
 		sign := ""
+		c = s.peek()
 		if c == '+' || c == '-' {
 			s.next()
 			sign = string(c)
