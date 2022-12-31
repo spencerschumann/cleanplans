@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"os"
 )
 
 type point struct {
@@ -159,7 +158,7 @@ func GenerateSVGWithPaths(svg *cleaner.SVGXMLNode) {
 
 	var iterate func(svg *cleaner.SVGXMLNode)
 	iterate = func(svg *cleaner.SVGXMLNode) {
-		fmt.Fprintf(os.Stderr, "Entering node with %d children\n", len(svg.Children))
+		//fmt.Fprintf(os.Stderr, "Entering node with %d children\n", len(svg.Children))
 		for _, child := range svg.Children {
 			for _, path := range child.Path {
 				dist := math.Abs(path.X-lastX) + math.Abs(path.Y-lastY)
@@ -175,7 +174,7 @@ func GenerateSVGWithPaths(svg *cleaner.SVGXMLNode) {
 	travelTo(0, svg.HeightInMM())
 	svg.Children = append(svg.Children, travel)
 
-	fmt.Fprintln(os.Stderr, "Total travel:", totalTravel)
+	//fmt.Fprintln(os.Stderr, "Total travel:", totalTravel)
 
 	outXML, err := svg.Marshal()
 	if err != nil {
@@ -201,43 +200,51 @@ func Generate(svg *cleaner.SVGXMLNode) {
 
 	xHome := 0.0
 	yHome := 0.0
-	zHeight := 0.0
-	xyTravelRate := 10000.0
-	xyFeedRate := 1000.0
-	zFeedRate := 1000.0
-	penUpSpeed := 3400.0
+	xyTravelRate := 15000.0
+	xyFeedRate := 2000.0
+	zFeedRate := 5000.0
+	spindleSpeed := 7500.0
 	penUpZ := 2.0
+	penFullRetractZ := 5.0
 
 	// Output gcode header
 	fmt.Println("G21 (metric ftw)")
 	fmt.Println("G90 (absolute mode)")
-	fmt.Printf("G92 X%.2f Y%.2f Z%.2f (you are here)\n", xHome, yHome, zHeight)
+
+	// For classic TimSav
+	//fmt.Printf("G92 X%.2f Y%.2f Z%.2f (you are here)\n", xHome, yHome, zHeight)
+
+	// For TimSav+ with homing switches
+	fmt.Println("$H (home all axes)")
+
 	fmt.Printf("G0 F%0.2f (Travel Feed Rate)\n", xyTravelRate)
-	fmt.Printf("G1 F%0.2f (Cut Feed Rate)\n", xyFeedRate)
-	//fmt.Printf("G0 F%0.2f (Z Feed Rate)\n", zFeedRate)
-	fmt.Printf("S%.2f (Pen Up Speed)\n", penUpSpeed)
-	fmt.Println("M3 (Start cutter)")
-	fmt.Printf("G1 Z%.2f (Pen Up)\n", penUpZ)
+
+	fmt.Printf("G1 Z%.2f F%.2f (Retract pen)\n", penFullRetractZ, zFeedRate)
+	fmt.Printf("M3 S%0.0f (Start cutter)\n", spindleSpeed)
+	state.Z = penUpZ
 
 	// Iterate through paths, generating gcode for each
 	transformY(svg, svg.HeightInMM())
-	iterate(svg, state)
+	iterate(svg, state, xyFeedRate, zFeedRate)
 
 	// Output gcode footer
 	fmt.Println()
 	fmt.Println("(end of print job)")
-	fmt.Printf("S%.2f (pen up speed)\n", penUpSpeed)
-	fmt.Printf("G1 Z%.2f\n", penUpZ)
+	fmt.Printf("G1 Z%.2f F%0.2F (Retract pen)\n", penFullRetractZ, zFeedRate)
 	fmt.Println("M5 (Stop cutter)")
 	fmt.Printf("G0 X%0.2F Y%0.2F F%0.2F (go home)\n", xHome, yHome, xyTravelRate)
-	fmt.Printf("G1 Z%0.2F F%02F\n", zHeight, zFeedRate)
+
+	// For classic TimSav, return to 0,0,0 position
+	//fmt.Printf("G1 Z%0.2F F%02F\n", zHeight, zFeedRate)
 }
 
 // transformY transforms the Y coordinate system from SVG's positive Y = down to Timsav's positive Y = up
 func transformY(svg *cleaner.SVGXMLNode, pageHeight float64) {
 	// The timSave gcode extension somehow offsets the Y values by a few mm beyond the page height.
 	// TODO: this shouldn't be necessary for the final extension, but it provides a useful equivalence during development.
-	yOffset := pageHeight - 5.135
+	//yOffset := pageHeight - 5.135
+
+	yOffset := pageHeight
 
 	for _, child := range svg.Children {
 		for _, path := range child.Path {
@@ -256,9 +263,9 @@ func distance(a, b point) float64 {
 	return math.Sqrt(dx*dx + dy*dy)
 }
 
-func iterate(svg *cleaner.SVGXMLNode, state *machineState) {
+func iterate(svg *cleaner.SVGXMLNode, state *machineState, xyFeedRate, zFeedRate float64) {
 	for _, child := range svg.Children {
-		fmt.Fprintf(os.Stderr, "Path %s: Style: %s Category: %d\n", child.ID, child.Styles, child.Category)
+		//fmt.Fprintf(os.Stderr, "Path %s: Style: %s Category: %d\n", child.ID, child.Styles, child.Category)
 		for i, path := range child.Path {
 			// This gcode comment isn't terribly useful, but for now I'm just aiming for parity with the python extension.
 			fmt.Printf("\n(Object %s, path %d of %d)\n", child.ID, i+1, len(child.Path))
@@ -266,7 +273,8 @@ func iterate(svg *cleaner.SVGXMLNode, state *machineState) {
 			dist := distance(point{x: state.X, y: state.Y}, point{x: path.X, y: path.Y})
 			if dist > 0.1 {
 				if state.Z <= 0 {
-					fmt.Printf("G1 Z2.00 S3400.00 (Pen Up)\n")
+					//fmt.Printf("G1 Z2.00 S3400.00 (Pen Up)\n")
+					fmt.Printf("G1 Z2.00 F%0.2f (Pen Up)\n", zFeedRate)
 					state.Z = 2
 				}
 				fmt.Printf("G0 X%0.2f Y%0.2f \n", path.X, path.Y)
@@ -275,39 +283,38 @@ func iterate(svg *cleaner.SVGXMLNode, state *machineState) {
 			}
 
 			var z float64
-			speed := 4000.0
 			var description string
 			switch child.Category {
 			case cleaner.CategoryFullCut:
-				z = -8.0
+				z = -6.0
 				description = "pen down through"
 			case cleaner.CategoryScore:
-				z = -5.0
+				z = -4.0
 				description = "pen down score"
-			case cleaner.CategoryPaperCut:
-			case cleaner.CategoryOptional:
-			case cleaner.CategoryCrease:
-				z = -2.0
-				speed = 3500
+			case cleaner.CategoryPaperCut,
+				cleaner.CategoryOptional,
+				cleaner.CategoryCrease:
+				z = -1.0
 				description = "pen down draw"
 			}
 			if z != state.Z {
-				fmt.Printf("G1 Z%0.2f S%0.2f (%s)\n", z, speed, description)
+				fmt.Printf("G1 Z%0.2f F%0.2f (%s)\n", z, zFeedRate, description)
 				state.Z = z
 			}
 
 			//fmt.Printf("G0 Z%0.2f S3800.00\n", z)
 			for _, drawTo := range path.DrawTo {
 				switch drawTo.Command {
-				case svgpath.LineTo:
-					fmt.Printf("G1 X%0.2f Y%0.2f \n", drawTo.X, drawTo.Y)
+				case svgpath.LineTo, svgpath.ClosePath:
+					fmt.Printf("G1 X%0.2f Y%0.2f F%0.2f\n", drawTo.X, drawTo.Y, xyFeedRate)
 				case svgpath.CurveTo:
-					fmt.Printf("G5 X%0.2f Y%0.2f I%0.2f J%0.2f P%0.2f Q%0.2f \n", drawTo.X, drawTo.Y, drawTo.X1, drawTo.Y1, drawTo.X2, drawTo.Y2)
+					fmt.Printf("G5 X%0.2f Y%0.2f I%0.2f J%0.2f P%0.2f Q%0.2f F%0.2f\n",
+						drawTo.X, drawTo.Y, drawTo.X1, drawTo.Y1, drawTo.X2, drawTo.Y2, xyFeedRate)
 				}
 				state.X = drawTo.X
 				state.Y = drawTo.Y
 			}
 		}
-		iterate(child, state)
+		iterate(child, state, xyFeedRate, zFeedRate)
 	}
 }

@@ -70,13 +70,18 @@ func (n *SVGXMLNode) Bounds() (minX, minY, maxX, maxY float64) {
 	maxY = math.Inf(-1)
 	for _, node := range n.Children {
 		for _, path := range node.Path {
-			// TODO: this just tracks start/end; this is correct for lines
+			// TODO: this just tracks start/end of each segment; this is correct for lines
 			// but not for curves.
-			lastX, lastY := path.EndPoint()
-			minX = math.Min(minX, math.Min(path.X, lastX))
-			maxX = math.Max(maxX, math.Max(path.X, lastX))
-			minY = math.Min(minY, math.Min(path.Y, lastY))
-			maxY = math.Max(maxY, math.Max(path.Y, lastY))
+			minX = math.Min(minX, path.X)
+			maxX = math.Max(maxX, path.X)
+			minY = math.Min(minY, path.Y)
+			maxY = math.Max(maxY, path.Y)
+			for _, d := range path.DrawTo {
+				minX = math.Min(minX, d.X)
+				maxX = math.Max(maxX, d.X)
+				minY = math.Min(minY, d.Y)
+				maxY = math.Max(maxY, d.Y)
+			}
 		}
 	}
 	return

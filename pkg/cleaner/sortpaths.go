@@ -3,8 +3,7 @@ package cleaner
 import (
 	"cleanplans/pkg/svgpath"
 	"encoding/xml"
-	"fmt"
-	"os"
+	"math"
 )
 
 func SortPaths(svg *SVGXMLNode) {
@@ -12,33 +11,32 @@ func SortPaths(svg *SVGXMLNode) {
 	// For now, assume each child is a single independent path with no sub-children.
 
 	minX, minY, maxX, maxY := svg.Bounds()
-	tree := newPathTree(minX, minY, maxX, maxY)
+	tree := newPathTree(minX-1, minY-1, maxX+1, maxY+1)
 	sorted := []*svgpath.SubPath{}
 
 	pathNodes := map[*svgpath.SubPath]*SVGXMLNode{}
 
 	for _, child := range svg.Children {
-		fmt.Fprintf(os.Stderr, "Pre-sort object: %s\n", child.ID)
 		for _, path := range child.Path {
 			tree.addPath(path)
 			pathNodes[path] = child
-			//fmt.Fprintln(os.Stderr, "added one path to tree")
 		}
 	}
 
-	x, y := 0.0, svg.HeightInMM()
+	// Start from point within bounding box nearest 0, 0
+	x := math.Max(0.0, minX)
+	y := math.Min(svg.HeightInMM(), maxY) // machine's 0, 0 = svg's 0, height
 	for {
 		nearestList := tree.findNearest(x, y, 1)
 		//fmt.Fprintf(os.Stderr, "findNearest %g %g returned %d\n", x, y, len(nearestList))
 		if len(nearestList) == 0 {
-			//all := tree.quadTree.Search(quadtree.NewAABB())
 			//fmt.Fprintln(os.Stderr, "findNearest returned 0 results")
 			break
 		}
 		nearest := nearestList[0]
 		tree.removePath(nearest)
 
-		// TODO: reverse the path if the end is nearest
+		// reverse the path if the end is nearest
 		if distance(x, y, nearest, false) < distance(x, y, nearest, true) {
 			node := pathNodes[nearest]
 			nearest = nearest.Reverse()
@@ -52,13 +50,12 @@ func SortPaths(svg *SVGXMLNode) {
 	svg.Children = nil
 	for _, path := range sorted {
 		node := pathNodes[path]
-		fmt.Fprintf(os.Stderr, "Post-sort object: %s\n", node.ID)
+		//fmt.Fprintf(os.Stderr, "Post-sort object: %s\n", node.ID)
 		svg.Children = append(svg.Children, &SVGXMLNode{
 			XMLName: xml.Name{
 				Space: "http://www.w3.org/2000/svg",
 				Local: "path",
 			},
-			// TODO: need to keep track of categories within the tree...for now just let them all collapse into black
 			Category: node.Category,
 			Path:     []*svgpath.SubPath{path},
 			style:    node.style,

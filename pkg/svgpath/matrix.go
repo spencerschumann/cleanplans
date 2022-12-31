@@ -53,6 +53,19 @@ func ParseTransform(transform string) Matrix {
 				A: 1, C: 0, E: x,
 				B: 0, D: 1, F: y,
 			})
+		case "scale":
+			if len(function.Args) != 2 && len(function.Args) != 1 {
+				log.Fatalf("1 or 2 args required for scale transform, got %v", function.Args)
+			}
+			x := function.Args[0]
+			y := 0.0
+			if len(function.Args) == 2 {
+				y = function.Args[1]
+			}
+			m = m.Multiply(Matrix{
+				A: x, C: 0, E: 0,
+				B: 0, D: y, F: 0,
+			})
 		case "rotate":
 			//  ⎡ cos(θ)  −sin(θ)  −x⋅cos(θ)+y⋅sin(θ)+x ⎤
 			//  ⎢ sin(θ)   cos(θ)  −x⋅sin(θ)−y⋅cos(θ)+y |

@@ -30,7 +30,8 @@ func main() {
 	svg.FilteredAbsoluteMM()
 	svg.RotateAndCenter(
 		508, // 20 inches in mm
-		762, // 30 inches in mm
+		//762, // 30 inches in mm
+		757, // My batch of foam board is actually 29 13/16 inches.
 	)
 
 	cleaner.Undash(svg)

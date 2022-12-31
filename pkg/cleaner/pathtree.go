@@ -124,6 +124,11 @@ func (t *pathTree) findNearest(x, y float64, maxCount int) []*svgpath.SubPath {
 	)
 	points := t.quadTree.KNearest(aabb, maxCount+50, nil)
 
+	/*if len(points) == 0 {
+		all := t.quadTree.Search(aabb)
+		fmt.Println("All points:", len(all))
+	}*/
+
 	var nearest []*svgpath.SubPath
 	for _, point := range points {
 		paths := point.Data().(map[*svgpath.SubPath]struct{})

@@ -54,7 +54,7 @@ func Simplify(svg *SVGXMLNode) {
 
 	for _, category := range []Category{CategoryFullCut, CategoryScore, CategoryPaperCut, CategoryOptional, CategoryCrease} {
 		minX, minY, maxX, maxY := svg.Bounds()
-		tree = newPathTree(minX, minY, maxX, maxY)
+		tree = newPathTree(minX-1, minY-1, maxX+1, maxY+1)
 
 		for _, node := range groups[category] {
 			for _, path := range node.Path {

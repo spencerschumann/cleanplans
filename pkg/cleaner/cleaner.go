@@ -178,6 +178,9 @@ func (svg *SVGXMLNode) RotateAndCenter(widthInMM, heightInMM float64) {
 		}
 	}
 
+	// SKIP CENTERING
+	return
+
 	svg.widthInMM = widthInMM
 	svg.heightInMM = heightInMM
 	svg.ViewBox = fmt.Sprintf("0 0 %f %f", svg.widthInMM, svg.heightInMM)
