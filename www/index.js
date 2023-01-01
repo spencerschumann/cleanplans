@@ -93,7 +93,23 @@ async function loadPdfFromData(data) {
             }
             {
                 let start = performance.now()
-                let result = goCleanPlans(obj.data, obj.width, obj.height, obj.kind);
+                let bitsPerPixel = 0
+
+                // Ugh, why can't I access the ImageKind object? Oh well, hack around it for now.
+                /*
+                switch (obj.kind) {
+                    case pdfjsLib.ImageKind.GRAYSCALE_1BPP: bitsPerPixel = 1; break;
+                    case pdfjsLib.ImageKind.RGB_24BPP: bitsPerPixel = 24; break;
+                    case pdfjsLib.ImageKind.RGBA_32BPP: bitsPerPixel = 32; break;
+                }
+                */
+                switch (obj.kind) {
+                    case 1: bitsPerPixel = 1; break;
+                    case 2: bitsPerPixel = 24; break;
+                    case 3: bitsPerPixel = 32; break;
+                }
+
+                let result = goCleanPlans(obj.data, obj.width, obj.height, bitsPerPixel);
                 let end = performance.now()
                 console.log(`called cleanPlans(), result is ${result}`)
                 console.log(`     Time to find average in Go: ${end - start}`)

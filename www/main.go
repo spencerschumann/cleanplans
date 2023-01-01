@@ -3,9 +3,10 @@ package main
 //build: wasm
 
 import (
+	"cleanplans/pkg/color"
+	"cleanplans/pkg/vectorize"
 	"fmt"
 	"syscall/js"
-	"time"
 )
 
 func main() {
@@ -19,27 +20,25 @@ func goCleanPlans(this js.Value, args []js.Value) any {
 	imageLen := image.Length()
 	width := args[1].Int()
 	height := args[2].Int()
-	imageType := args[3].Int()
-	fmt.Printf("Go CleanPlans called: %d bytes, %d, %d, %d\n", imageLen, width, height, imageType)
+	bitsPerPixel := args[3].Int()
+	fmt.Printf("Go CleanPlans called: %d bytes, %d, %d, %d\n", imageLen, width, height, bitsPerPixel)
 
 	data := make([]byte, imageLen)
 	js.CopyBytesToGo(data, image)
 
-	var average float64
+	ci := vectorize.PDFJSImageToColorImage(data, width, height, bitsPerPixel)
 
-	for loops := 0; loops < 10; loops++ {
-		start := time.Now()
+	// drop the data array now and run a GC cycle to conserve memory
+	data = nil
 
-		var total float64
-		for i := 0; i < imageLen; i++ {
-			total += float64(data[i])
-		}
-		average = total / float64(len(data))
-		fmt.Printf("Average value: %f\n", average)
-
-		dur := time.Since(start)
-		fmt.Printf("Time to process data using js.CopyBytesToGo method: %s\n", dur)
+	// Let's do a histogram of ci for debug.
+	hist := map[color.Color]int{}
+	for _, c := range ci {
+		hist[c] += 1
+	}
+	for k, v := range hist {
+		fmt.Printf("Color histogram: %d %d\n", k, v)
 	}
 
-	return average
+	return nil
 }
