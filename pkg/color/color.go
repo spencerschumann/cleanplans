@@ -32,19 +32,19 @@ const (
 	Orange
 )
 
-var Palette = []color.RGBA{
-	{R: 0xff, G: 0xff, B: 0xff, A: 0xff}, // White
-	{R: 0x00, G: 0x00, B: 0x00, A: 0xff}, // Black
-	{R: 0x7f, G: 0x7f, B: 0x7f, A: 0xff}, // Gray
-	{R: 0xff, G: 0x00, B: 0x00, A: 0xff}, // Red
-	{R: 0x00, G: 0xcc, B: 0x00, A: 0xff}, // Green
-	{R: 0xff, G: 0xff, B: 0xff, A: 0xff}, // Blue
-	{R: 0xcc, G: 0x00, B: 0xcc, A: 0xff}, // Magenta
-	{R: 0x00, G: 0xbb, B: 0xdd, A: 0xff}, // Cyan
-	{R: 0xff, G: 0xdd, B: 0x00, A: 0xff}, // Orange
+var Palette = color.Palette{
+	color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}, // White
+	color.RGBA{R: 0x00, G: 0x00, B: 0x00, A: 0xff}, // Black
+	color.RGBA{R: 0x7f, G: 0x7f, B: 0x7f, A: 0xff}, // Gray
+	color.RGBA{R: 0xff, G: 0x00, B: 0x00, A: 0xff}, // Red
+	color.RGBA{R: 0x00, G: 0xcc, B: 0x00, A: 0xff}, // Green
+	color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}, // Blue
+	color.RGBA{R: 0xcc, G: 0x00, B: 0xcc, A: 0xff}, // Magenta
+	color.RGBA{R: 0x00, G: 0xbb, B: 0xdd, A: 0xff}, // Cyan
+	color.RGBA{R: 0xff, G: 0xdd, B: 0x00, A: 0xff}, // Orange
 }
 
-func ColorToRGBA(c Color) color.RGBA {
+func ColorToImageColor(c Color) color.Color {
 	if int(c) >= len(Palette) {
 		return Palette[White]
 	}
@@ -56,16 +56,16 @@ func min3(a, b, c byte) byte {
 		b = c
 	}
 	if b < a {
-		b = a
+		a = b
 	}
 	return a
 }
 
 func max3(a, b, c byte) byte {
-	if a > b {
+	if b < a {
 		b = a
 	}
-	if b > c {
+	if c < b {
 		c = b
 	}
 	return c
@@ -73,9 +73,17 @@ func max3(a, b, c byte) byte {
 
 // RemapColor remaps an RGB color, expressed as r, g, and b components, to a Color.
 func RemapColor(r, g, b byte) Color {
+	// Check for pure white or pure black first - these are expected to be most common
+	/*if r > 200 && g > 200 && b > 200 {
+		return White
+	}
+	if r < 50 && g < 50 && b < 50 {
+		return Black
+	}*/
+
 	min := min3(r, g, b)
 	max := max3(r, g, b)
-	lightness := max/2 + min/2 // divide each separately to avoid u8 overflow
+	lightness := max/2 + min/2 // divide each separately before adding to avoid byte overflow
 
 	// TODO: configurable thresholds
 

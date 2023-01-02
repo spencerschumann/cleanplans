@@ -14,6 +14,7 @@ loadGoWASM()
 
 // Get references to the file input, load button, URL input, and load URL button elements
 const fileInput = document.getElementById('file-input');
+const pngImage = document.getElementById('png-image');
 
 // Define a function to load a PDF file from a local file
 function loadPdfFromFile() {
@@ -79,9 +80,6 @@ async function loadPdfFromData(data) {
         } else if (op === pdfjsLib.OPS.paintImageXObject) {
             console.log(`   Op: paintImageXObject ${args[0]}`);
             let obj = page.objs.get(args[0]);
-            //console.log(`             Obj: ${ JSON.stringify(obj) }`);
-            // obj has  Obj: {"width":1508,"height":2111,"kind":2,"data":"..."}
-            console.log(`Type of data: ${obj.data.constructor}`)
             {
                 let start = performance.now()
                 let sum = 0
@@ -111,11 +109,16 @@ async function loadPdfFromData(data) {
 
                 let result = goCleanPlans(obj.data, obj.width, obj.height, bitsPerPixel);
                 let end = performance.now()
-                console.log(`called cleanPlans(), result is ${result}`)
+                console.log(`called cleanPlans(), result is ${result.length} bytes`)
                 console.log(`     Time to find average in Go: ${end - start}`)
+
+                const blob = new Blob([result], { type: 'image/png' });
+                const url = URL.createObjectURL(blob);
+                pngImage.src = url;
             }
         } else {
             console.log(`   Op: ${opNames[op]}(${JSON.stringify(args)})`);
         }
     }
+    doc.destroy();
 }
