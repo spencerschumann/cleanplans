@@ -11,56 +11,57 @@ import (
 func TestPointJoiner(t *testing.T) {
 	tests := []struct {
 		Name   string
-		Input  []vectorize.LinePoint
+		Input  [][]float32
 		Output []vectorize.Line
 	}{
 		{
-			Name: "single point",
-			Input: []vectorize.LinePoint{
-				{X: 1, Y: 1},
-			},
+			Name:   "single point",
+			Input:  [][]float32{{1}},
 			Output: nil,
 		},
 		{
 			Name: "two vertical lines",
-			Input: []vectorize.LinePoint{
-				{X: 1, Y: 1}, {X: 5, Y: 1},
-				{X: 1, Y: 2}, {X: 5, Y: 2},
+			Input: [][]float32{
+				{1, 5},
+				{1, 5},
 			},
 			Output: []vectorize.Line{
-				{{X: 1, Y: 1}, {X: 1, Y: 2}},
-				{{X: 5, Y: 1}, {X: 5, Y: 2}},
+				{{X: 1, Y: 0}, {X: 1, Y: 1}},
+				{{X: 5, Y: 0}, {X: 5, Y: 1}},
 			},
 		},
 
 		{
 			Name: "two 45 degree diagonal lines",
-			Input: []vectorize.LinePoint{
-				{X: 1, Y: 1}, {X: 10, Y: 1},
-				{X: 2, Y: 2}, {X: 9, Y: 2},
+			Input: [][]float32{
+				{1, 10},
+				{2, 9},
 			},
 			Output: []vectorize.Line{
-				{{X: 1, Y: 1}, {X: 2, Y: 2}},
-				{{X: 10, Y: 1}, {X: 9, Y: 2}},
+				{{X: 1, Y: 0}, {X: 2, Y: 1}},
+				{{X: 10, Y: 0}, {X: 9, Y: 1}},
 			},
 		},
 
 		{
 			Name: "one nearly vertical line and one diagonal slightly over 45 degrees",
-			Input: []vectorize.LinePoint{
-				{X: 1, Y: 1}, {X: 10, Y: 1},
-				{X: 1.1, Y: 2}, {X: 8.9, Y: 2},
+			Input: [][]float32{
+				{1, 10},
+				{1.1, 8.9},
 			},
 			Output: []vectorize.Line{
-				{{X: 1, Y: 1}, {X: 1.1, Y: 2}},
+				{{X: 1, Y: 0}, {X: 1.1, Y: 1}},
 			},
 		},
 	}
 
 	for _, test := range tests {
-		pj := vectorize.PointJoiner{}
-		for _, point := range test.Input {
-			pj.AddPoint(point)
+		pj := vectorize.NewPointJoiner(10, 19)
+		for _, row := range test.Input {
+			for _, x := range row {
+				pj.AddPoint(x)
+			}
+			pj.NextY()
 		}
 
 		lines := pj.Lines()
