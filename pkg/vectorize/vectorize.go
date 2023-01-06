@@ -60,3 +60,92 @@ func PDFJSImageToColorImage(image []byte, width, height, bitsPerPixel int) *Colo
 		Data:   data,
 	}
 }
+
+// Configuration for Vectorize; hard-code for now, but will need to expose these somehow.
+// const backgroundColor = color.White
+const maxRunLength = 20
+
+func Vectorize(img *ColorImage) string {
+	return "not implemented"
+}
+
+func FindRuns(img *ColorImage, reportRun func(center float32, width int)) {
+	runStart := -1
+	checkReportRun := func(x int) {
+		if runStart < 0 {
+			return
+		}
+		runLength := x - runStart
+		if runLength <= maxRunLength {
+			reportRun(float32(x+runStart)/2, runLength)
+		}
+		// End the current run.
+		runStart = -1
+	}
+
+	// First pass: scan for horizontal runs, which are then assembled into vertical (or near vertical) lines.
+	i := 0
+	for y := 0; y < img.Height; y++ {
+		for x := 0; x < img.Width; x++ {
+			c := img.Data[i]
+			i++
+			if c == color.Black {
+				if runStart == -1 {
+					// new run
+					runStart = x
+				}
+			} else {
+				// Non-black; check for finished run
+				checkReportRun(x)
+			}
+		}
+		// check for finished run at end of row
+		checkReportRun(img.Width)
+	}
+}
+
+/* first pass at this function:
+{
+	// To start with, just look for white and black pixels.
+	// This will of course need to be expanded to other colors, which could be done
+	// trivially by running multiple passes of this alg, one for each color. But it
+	// is probably more efficient to look for all colors at the same time.
+
+	// First pass: scan for horizontal runs, which are then assembled into vertical (or near vertical) lines.
+	i := 0
+	runStart := -1
+	//for y := 0; y < image.Height; y++ {
+	// For testing, load just the middle 2/3 of the file - works especially well with letter sized pages
+	//lines := [][]image.Point{}
+	//priorRunCenters := []float32{}
+	for y := img.Height / 6; y < img.Height*5/6; y++ {
+		runCenters := []float32{}
+		for x := 0; x < img.Width; x++ {
+			c := img.Data[i]
+			i++
+			if c == color.Black {
+				if runStart == -1 {
+					// new run
+					runStart = x
+				}
+			} else {
+				// Non-black; check for finished run
+				if runStart >= 0 {
+					runLength := x - runStart
+					if runLength <= maxRunLength {
+						//fmt.Printf("Got a run from %d to %d, y=%d\n", runStart, x-1, y)
+						runCenters = append(runCenters, float32(x+runStart))
+					}
+
+					// End the current run.
+					runStart = -1
+				}
+			}
+		}
+
+		//priorRunCenters = runCenters
+	}
+
+	return "done"
+}
+*/
