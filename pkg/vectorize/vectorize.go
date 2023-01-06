@@ -69,15 +69,15 @@ func Vectorize(img *ColorImage) string {
 	return "not implemented"
 }
 
-func FindRuns(img *ColorImage, reportRun func(center float32, width int)) {
+func FindRuns(img *ColorImage, reportRun func(center float32, minor int, width int)) {
 	runStart := -1
-	checkReportRun := func(x int) {
+	checkReportRun := func(major, minor int) {
 		if runStart < 0 {
 			return
 		}
-		runLength := x - runStart
+		runLength := major - runStart
 		if runLength <= maxRunLength {
-			reportRun(float32(x+runStart)/2, runLength)
+			reportRun(float32(major+runStart)/2, minor, runLength)
 		}
 		// End the current run.
 		runStart = -1
@@ -96,11 +96,11 @@ func FindRuns(img *ColorImage, reportRun func(center float32, width int)) {
 				}
 			} else {
 				// Non-black; check for finished run
-				checkReportRun(x)
+				checkReportRun(x, y)
 			}
 		}
 		// check for finished run at end of row
-		checkReportRun(img.Width)
+		checkReportRun(img.Width, y)
 	}
 }
 

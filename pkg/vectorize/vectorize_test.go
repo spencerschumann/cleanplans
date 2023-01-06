@@ -31,17 +31,18 @@ func makeImage(rows ...string) *vectorize.ColorImage {
 
 func TestRunDetection(t *testing.T) {
 	type Run struct {
-		X     float32
-		Width int
+		Center float32
+		Minor  int
+		Width  int
 	}
 
 	test := func(img *vectorize.ColorImage, expectedRuns []Run) {
 		i := 0
-		vectorize.FindRuns(img, func(x float32, width int) {
+		vectorize.FindRuns(img, func(center float32, minor int, width int) {
 			if i >= len(expectedRuns) {
 				t.Fatalf("unexpected extra run")
 			}
-			diff := cmp.Diff(expectedRuns[i], Run{X: x, Width: width})
+			diff := cmp.Diff(expectedRuns[i], Run{Center: center, Minor: minor, Width: width})
 			if diff != "" {
 				t.Fatalf("Run index %d incorrect: %s", i, diff)
 			}
@@ -58,16 +59,16 @@ func TestRunDetection(t *testing.T) {
 		"◻◻◼◼◼◼◻◻",
 		"◼◼◼◼◻◻◻◻",
 		"◼◼◼◼◻◻◻◻",
-		"◻◻◻◻◻◻◻◻", // todo: need to add Y, and also relabel to major/minor, to verify that this row was skipped.
+		"◻◻◻◻◻◻◻◻",
 		"◼◼◼◼◼◼◼◼",
 		"◼◼◻◻◻◻◼◼",
 	), []Run{
-		{X: 6, Width: 4},
-		{X: 6, Width: 4},
-		{X: 4, Width: 4},
-		{X: 2, Width: 4},
-		{X: 2, Width: 4},
-		{X: 4, Width: 8},
-		{X: 1, Width: 2}, {X: 7, Width: 2},
+		{Center: 6, Minor: 0, Width: 4},
+		{Center: 6, Minor: 1, Width: 4},
+		{Center: 4, Minor: 2, Width: 4},
+		{Center: 2, Minor: 3, Width: 4},
+		{Center: 2, Minor: 4, Width: 4},
+		{Center: 4, Minor: 6, Width: 8},
+		{Center: 1, Minor: 7, Width: 2}, {Center: 7, Minor: 7, Width: 2},
 	})
 }
