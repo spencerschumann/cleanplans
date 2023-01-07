@@ -81,43 +81,73 @@ type RunHandler interface {
 	NextMinor()
 }
 
-func Vectorize(img *ColorImage) string {
-	pj := NewPointJoiner(10, img.Width)
-	FindRuns(img, pj)
+// This helps close gaps, but it also doesn't take into consideration line slope. It may
+// be better to do away with this when adding the code to join line segments to eliminate
+// gaps.
+func adjustLineEndpoints(line JoinerLine) {
+	last := len(line) - 1
+	for i := 1; i < last; i++ {
+		line[i].Minor += 0.5
+	}
+	line[last].Minor += 1
+}
 
-	pathNode := cleaner.SVGXMLNode{
+func Vectorize(img *ColorImage) string {
+
+	horizontalRunPathNode := cleaner.SVGXMLNode{
 		XMLName: xml.Name{Local: "path"},
 		Styles:  "fill:none;stroke:#770000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
 	}
-
-	lines := pj.JoinerLines()
-	for _, line := range lines {
-		path := svgpath.SubPath{
-			X: float64(line[0].Major),
-			Y: float64(line[0].Minor),
-		}
-		for i, point := range line {
-			adj := 0.5
-			if i == len(line)-1 {
-				adj = 1
-			}
-			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
-				Command: svgpath.LineTo,
-				X:       float64(point.Major),
-				Y:       float64(point.Minor) + adj,
-			})
-		}
-		pathNode.Path = append(pathNode.Path, &path)
+	verticalRunPathNode := cleaner.SVGXMLNode{
+		XMLName: xml.Name{Local: "path"},
+		Styles:  "fill:none;stroke:#0000cc;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
 	}
-
 	svg := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "svg"},
-		Children: []*cleaner.SVGXMLNode{&pathNode},
+		Children: []*cleaner.SVGXMLNode{&horizontalRunPathNode, &verticalRunPathNode},
 
 		// Note: not using a unit specifier here for display, to match up with the png image. For
 		// the final output SVG (if that is the format I go with), these will need to be mapped to mm.
 		Width:  strconv.Itoa(img.Width),
 		Height: strconv.Itoa(img.Height),
+	}
+
+	pj := NewPointJoiner(10, img.Width)
+	FindHorizontalRuns(img, pj)
+	lines := pj.JoinerLines()
+	for _, line := range lines {
+		adjustLineEndpoints(line)
+		path := svgpath.SubPath{
+			X: float64(line[0].Major),
+			Y: float64(line[0].Minor),
+		}
+		for _, point := range line {
+			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
+				Command: svgpath.LineTo,
+				X:       float64(point.Major),
+				Y:       float64(point.Minor),
+			})
+		}
+		horizontalRunPathNode.Path = append(horizontalRunPathNode.Path, &path)
+	}
+
+	pj = NewPointJoiner(10, img.Height)
+	FindVerticalRuns(img, pj)
+	lines = pj.JoinerLines()
+	for _, line := range lines {
+		adjustLineEndpoints(line)
+		path := svgpath.SubPath{
+			X: float64(line[0].Minor),
+			Y: float64(line[0].Major),
+		}
+		for _, point := range line {
+			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
+				Command: svgpath.LineTo,
+				X:       float64(point.Minor),
+				Y:       float64(point.Major),
+			})
+		}
+		verticalRunPathNode.Path = append(verticalRunPathNode.Path, &path)
 	}
 
 	data, err := svg.Marshal()
@@ -127,23 +157,20 @@ func Vectorize(img *ColorImage) string {
 	return string(data)
 }
 
-func FindRuns(img *ColorImage, runHandler RunHandler) {
-	runStart := -1
-	checkReportRun := func(major, minor int) {
-		if runStart < 0 {
-			return
-		}
-		runLength := major - runStart
-		if runLength <= maxRunLength {
-			runHandler.AddRun(float32(major+runStart)/2, runLength)
-		}
-		// End the current run.
-		runStart = -1
+func checkReportRun(major, minor, runStart int, runHandler RunHandler) {
+	if runStart < 0 {
+		return
 	}
+	runLength := major - runStart
+	if runLength <= maxRunLength {
+		runHandler.AddRun(float32(major+runStart)/2, runLength)
+	}
+}
 
-	// First pass: scan for horizontal runs, which are then assembled into vertical (or near vertical) lines.
+func FindHorizontalRuns(img *ColorImage, runHandler RunHandler) {
 	i := 0
 	for y := 0; y < img.Height; y++ {
+		runStart := -1
 		for x := 0; x < img.Width; x++ {
 			c := img.Data[i]
 			i++
@@ -154,11 +181,38 @@ func FindRuns(img *ColorImage, runHandler RunHandler) {
 				}
 			} else {
 				// Non-black; check for finished run
-				checkReportRun(x, y)
+				checkReportRun(x, y, runStart, runHandler)
+				runStart = -1
 			}
 		}
 		// check for finished run at end of row
-		checkReportRun(img.Width, y)
+		checkReportRun(img.Width, y, runStart, runHandler)
+		runHandler.NextMinor()
+	}
+}
+
+func FindVerticalRuns(img *ColorImage, runHandler RunHandler) {
+	// Note: although it's possible to combine the implementations of this functinon and
+	// FindHorizontalRuns, the result would be significantly more complex due to the number
+	// of differences. Also this is one of the most performance critical loops in this
+	// project, and making the implementation more general would most likely reduce performance.
+	for x := 0; x < img.Width; x++ {
+		runStart := -1
+		for y := 0; y < img.Height; y++ {
+			c := img.Data[x+y*img.Width]
+			if c == color.Black {
+				if runStart == -1 {
+					// new run
+					runStart = y
+				}
+			} else {
+				// Non-black; check for finished run
+				checkReportRun(y, x, runStart, runHandler)
+				runStart = -1
+			}
+		}
+		// check for finished run at end of row
+		checkReportRun(img.Height, x, runStart, runHandler)
 		runHandler.NextMinor()
 	}
 }

@@ -7,7 +7,7 @@ import (
 // JoinerLinePoint is a single point in a potential line.
 type JoinerLinePoint struct {
 	Major float32
-	Minor int
+	Minor float32
 	Width int
 }
 
@@ -57,7 +57,7 @@ func (pj *PointJoiner) NextMinor() {
 		for i := 0; i < len(bucket); i++ {
 			line := bucket[i]
 			lastPoint := line[len(line)-1]
-			if lastPoint.Minor < pj.minor-1 {
+			if int(lastPoint.Minor) < pj.minor-1 {
 				// Add the line to the output lines slice if it passes filtering criteria.
 				if isLineAdmissable(line) {
 					pj.lines = append(pj.lines, line)
@@ -87,7 +87,7 @@ func (pj *PointJoiner) AddRun(major float32, width int) {
 		for i, line := range pj.buckets[bucketIdx] {
 			lastPoint := line[len(line)-1]
 			if math.Abs(float64(major-lastPoint.Major)) <= 1 {
-				point := JoinerLinePoint{Major: major, Minor: pj.minor, Width: width}
+				point := JoinerLinePoint{Major: major, Minor: float32(pj.minor), Width: width}
 				pj.buckets[bucketIdx][i] = append(line, point)
 				return
 			}
@@ -96,7 +96,7 @@ func (pj *PointJoiner) AddRun(major float32, width int) {
 
 	// If the point can't be added to any of the existing lines, create a new line in the bucket
 	pj.buckets[pointBucketIdx] = append(pj.buckets[pointBucketIdx],
-		JoinerLine{{Major: major, Minor: pj.minor, Width: width}})
+		JoinerLine{{Major: major, Minor: float32(pj.minor), Width: width}})
 }
 
 func (pj *PointJoiner) JoinerLines() []JoinerLine {
