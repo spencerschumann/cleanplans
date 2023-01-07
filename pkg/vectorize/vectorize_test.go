@@ -96,3 +96,28 @@ func TestRunDetection(t *testing.T) {
 		{Center: 1, Minor: 7, Width: 2}, {Center: 7, Minor: 7, Width: 2},
 	})
 }
+
+func TestLineDetection(t *testing.T) {
+	test := func(img *vectorize.ColorImage) {
+		pj := vectorize.NewPointJoiner(10, img.Width)
+		vectorize.FindRuns(img, pj)
+		lines := pj.JoinerLines()
+		t.Errorf("Lines: %#v\n", lines)
+	}
+
+	test(makeImage(
+		"◻◻◻◻◼◼◻◻",
+		"◻◻◻◼◼◻◻◻",
+		"◻◻◼◼◻◻◻◻",
+		"◻◼◼◻◻◻◻◻",
+		"◼◼◻◻◻◻◻◻",
+		"◻◻◻◻◻◻◻◻",
+		"◼◼◼◼◼◼◼◼",
+		"◻◻◻◻◻◻◻◻",
+		"◻◻◼◼◼◼◻◻",
+		"◻◻◼◼◼◼◻◻",
+		"◻◻◼◼◼◼◻◻",
+		"◻◻◼◼◼◼◻◻",
+		"◻◻◻◻◻◻◻◻",
+	))
+}

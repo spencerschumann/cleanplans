@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"image"
 	imgcolor "image/color"
+	"strconv"
 )
 
 // Terrible name...if this works, I need to change names to avoid collisions with the standard Go image and color packages.
@@ -95,11 +96,15 @@ func Vectorize(img *ColorImage) string {
 			X: float64(line[0].Major),
 			Y: float64(line[0].Minor),
 		}
-		for _, point := range line {
+		for i, point := range line {
+			adj := 0.5
+			if i == len(line)-1 {
+				adj = 1
+			}
 			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
 				Command: svgpath.LineTo,
 				X:       float64(point.Major),
-				Y:       float64(point.Minor),
+				Y:       float64(point.Minor) + adj,
 			})
 		}
 		pathNode.Path = append(pathNode.Path, &path)
@@ -109,9 +114,10 @@ func Vectorize(img *ColorImage) string {
 		XMLName:  xml.Name{Local: "svg"},
 		Children: []*cleaner.SVGXMLNode{&pathNode},
 
-		// TODO: need to map real units here, and will also need to figure out how to display them in the browser.
-		Width:  "1000mm",
-		Height: "1000mm",
+		// Note: not using a unit specifier here for display, to match up with the png image. For
+		// the final output SVG (if that is the format I go with), these will need to be mapped to mm.
+		Width:  strconv.Itoa(img.Width),
+		Height: strconv.Itoa(img.Height),
 	}
 
 	data, err := svg.Marshal()

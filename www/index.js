@@ -117,8 +117,15 @@ async function loadPdfFromData(data) {
                 const url = URL.createObjectURL(blob);
                 pngImage.src = url;
 
-                console.log(`SVG: ${result.svg}`)
-                document.getElementById('svg-container').innerHTML = result.svg
+                //console.log(`SVG: ${result.svg}`)
+                let oldSVG = document.getElementById('svg-image');
+                if (oldSVG) {
+                    oldSVG.remove();
+                }
+                let svg = document.createRange().createContextualFragment(result.svg).firstChild
+                svg.setAttribute('id', 'svg-image')
+                svg.setAttribute('style', 'position: absolute; top: 0;')
+                document.getElementById('img-container').appendChild(svg)
             }
         } else {
             console.log(`   Op: ${opNames[op]}(${JSON.stringify(args)})`);

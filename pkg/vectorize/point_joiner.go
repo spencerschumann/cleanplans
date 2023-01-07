@@ -33,6 +33,20 @@ func NewPointJoiner(bucketSize, maxMajor int) *PointJoiner {
 	}
 }
 
+func isLineAdmissable(line JoinerLine) bool {
+	// it's not a line if it doesn't have at least 2 points.
+	if len(line) < 2 {
+		return false
+	}
+
+	totalWidth := 0.0
+	for _, p := range line {
+		totalWidth += float64(p.Width)
+	}
+	avgWidth := totalWidth / float64(len(line))
+	return len(line) > int(avgWidth*1.5)
+}
+
 func (pj *PointJoiner) NextMinor() {
 	pj.minor++
 
@@ -44,10 +58,11 @@ func (pj *PointJoiner) NextMinor() {
 			line := bucket[i]
 			lastPoint := line[len(line)-1]
 			if lastPoint.Minor < pj.minor-1 {
-				// Add the linen to the output lines slice, if it has at least 2 points
-				if len(line) >= 2 {
+				// Add the line to the output lines slice if it passes filtering criteria.
+				if isLineAdmissable(line) {
 					pj.lines = append(pj.lines, line)
 				}
+
 				// Remove the line from the bucket
 				bucket[i] = bucket[len(bucket)-1]
 				bucket = bucket[:len(bucket)-1]
@@ -72,14 +87,16 @@ func (pj *PointJoiner) AddRun(major float32, width int) {
 		for i, line := range pj.buckets[bucketIdx] {
 			lastPoint := line[len(line)-1]
 			if math.Abs(float64(major-lastPoint.Major)) <= 1 {
-				pj.buckets[bucketIdx][i] = append(line, JoinerLinePoint{Major: major, Minor: pj.minor})
+				point := JoinerLinePoint{Major: major, Minor: pj.minor, Width: width}
+				pj.buckets[bucketIdx][i] = append(line, point)
 				return
 			}
 		}
 	}
 
 	// If the point can't be added to any of the existing lines, create a new line in the bucket
-	pj.buckets[pointBucketIdx] = append(pj.buckets[pointBucketIdx], JoinerLine{{Major: major, Minor: pj.minor}})
+	pj.buckets[pointBucketIdx] = append(pj.buckets[pointBucketIdx],
+		JoinerLine{{Major: major, Minor: pj.minor, Width: width}})
 }
 
 func (pj *PointJoiner) JoinerLines() []JoinerLine {

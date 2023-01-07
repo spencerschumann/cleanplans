@@ -4,15 +4,34 @@
 <head>
   <meta charset="utf-8">
   <title>Go CleanPlans</title>
+
+  <style>
+    #img-container {
+      position: relative;
+    }
+
+    #img-container>* {
+      position: absolute;
+      top: 0;
+    }
+
+    #img-container>img {
+      z-index: 1;
+      opacity: 0.2;
+    }
+
+    #img-container>svg {
+      z-index: 2;
+    }
+  </style>
 </head>
 
 <body>
   <h1>Go CleanPlans</h1>
   <input type="file" id="file-input" accept="application/pdf">
-  <div>
+  <div id="img-container">
     <p>Image from PDF file:</p>
-    <img id="png-image" width="1600">
-    <div id="svg-container"></div>
+    <img id="png-image">
   </div>
   <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
   <script src="wasm_exec.js"></script>
