@@ -4,22 +4,22 @@ import (
 	"math"
 )
 
-// LinePoint is a single point in a potential line.
-type LinePoint struct {
+// JoinerLinePoint is a single point in a potential line.
+type JoinerLinePoint struct {
 	Major float32
 	Minor int
 	Width int
 }
 
-// Line is a sequence of adjacent points. LinePoints are adjacent
+// JoinerLine is a sequence of adjacent points. LinePoints are adjacent
 // if the Y values differ by exactly 1, and the X values differ by at most 1.
-type Line []LinePoint
+type JoinerLine []JoinerLinePoint
 
 type PointJoiner struct {
 	minor      int
 	bucketSize int
-	buckets    [][]Line
-	lines      []Line
+	buckets    [][]JoinerLine
+	lines      []JoinerLine
 }
 
 func NewPointJoiner(bucketSize, maxMajor int) *PointJoiner {
@@ -29,7 +29,7 @@ func NewPointJoiner(bucketSize, maxMajor int) *PointJoiner {
 	}
 	return &PointJoiner{
 		bucketSize: bucketSize,
-		buckets:    make([][]Line, numBuckets),
+		buckets:    make([][]JoinerLine, numBuckets),
 	}
 }
 
@@ -58,7 +58,7 @@ func (pj *PointJoiner) NextMinor() {
 	}
 }
 
-func (pj *PointJoiner) AddPoint(major float32) {
+func (pj *PointJoiner) AddRun(major float32, width int) {
 	// Find the appropriate bucket for the point
 	pointBucketIdx := int(major / float32(pj.bucketSize))
 
@@ -72,17 +72,17 @@ func (pj *PointJoiner) AddPoint(major float32) {
 		for i, line := range pj.buckets[bucketIdx] {
 			lastPoint := line[len(line)-1]
 			if math.Abs(float64(major-lastPoint.Major)) <= 1 {
-				pj.buckets[bucketIdx][i] = append(line, LinePoint{Major: major, Minor: pj.minor})
+				pj.buckets[bucketIdx][i] = append(line, JoinerLinePoint{Major: major, Minor: pj.minor})
 				return
 			}
 		}
 	}
 
 	// If the point can't be added to any of the existing lines, create a new line in the bucket
-	pj.buckets[pointBucketIdx] = append(pj.buckets[pointBucketIdx], Line{{Major: major, Minor: pj.minor}})
+	pj.buckets[pointBucketIdx] = append(pj.buckets[pointBucketIdx], JoinerLine{{Major: major, Minor: pj.minor}})
 }
 
-func (pj *PointJoiner) Lines() []Line {
+func (pj *PointJoiner) JoinerLines() []JoinerLine {
 	// Advance Y twice to flush out all buckets
 	pj.NextMinor()
 	pj.NextMinor()

@@ -108,8 +108,10 @@ func (n *SVGXMLNode) RemoveEmptyPaths() {
 
 func (n *SVGXMLNode) Marshal() ([]byte, error) {
 	// Reserialize attributes
-	n.Width = FormatNumber(n.widthInMM) + "mm"
-	n.Height = FormatNumber(n.heightInMM) + "mm"
+	if n.widthInMM != 0 && n.heightInMM != 0 {
+		n.Width = FormatNumber(n.widthInMM) + "mm"
+		n.Height = FormatNumber(n.heightInMM) + "mm"
+	}
 	for _, child := range n.Children {
 		// Back to a path string
 		child.D = svgpath.ToString(child.Path)

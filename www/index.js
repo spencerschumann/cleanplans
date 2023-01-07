@@ -51,7 +51,7 @@ fileInput.addEventListener('change', loadPdfFromFile);
 async function loadPdfFromData(data) {
     let doc = await pdfjsLib.getDocument(data).promise;
     console.log(`Pages: ${doc.numPages}`);
-    let page = await doc.getPage(11);
+    let page = await doc.getPage(7);
     console.log(`Page: ${page}`);
     console.log(`  User Units: ${page.userUnit}`);
     console.log(`  View: ${page.view}`);
@@ -108,13 +108,17 @@ async function loadPdfFromData(data) {
                 }
 
                 let result = goCleanPlans(obj.data, obj.width, obj.height, bitsPerPixel);
+
                 let end = performance.now()
-                console.log(`called cleanPlans(), result is ${result.length} bytes`)
+                console.log(`called cleanPlans(), result is ${result.png.length} bytes`)
                 console.log(`     Time to find average in Go: ${end - start}`)
 
-                const blob = new Blob([result], { type: 'image/png' });
+                const blob = new Blob([result.png], { type: 'image/png' });
                 const url = URL.createObjectURL(blob);
                 pngImage.src = url;
+
+                console.log(`SVG: ${result.svg}`)
+                document.getElementById('svg-container').innerHTML = result.svg
             }
         } else {
             console.log(`   Op: ${opNames[op]}(${JSON.stringify(args)})`);

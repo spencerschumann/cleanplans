@@ -1,7 +1,10 @@
 package vectorize
 
 import (
+	"cleanplans/pkg/cleaner"
 	"cleanplans/pkg/color"
+	"cleanplans/pkg/svgpath"
+	"encoding/xml"
 	"image"
 	imgcolor "image/color"
 )
@@ -12,6 +15,13 @@ type ColorImage struct {
 	Height int
 	Data   []color.Color
 }
+
+type Point struct {
+	X float32
+	Y float32
+}
+
+type Line []Point
 
 func (ci *ColorImage) ColorModel() imgcolor.Model {
 	return color.Palette
@@ -65,11 +75,53 @@ func PDFJSImageToColorImage(image []byte, width, height, bitsPerPixel int) *Colo
 // const backgroundColor = color.White
 const maxRunLength = 20
 
-func Vectorize(img *ColorImage) string {
-	return "not implemented"
+type RunHandler interface {
+	AddRun(major float32, width int)
+	NextMinor()
 }
 
-func FindRuns(img *ColorImage, reportRun func(center float32, minor int, width int)) {
+func Vectorize(img *ColorImage) string {
+	pj := NewPointJoiner(10, img.Width)
+	FindRuns(img, pj)
+
+	pathNode := cleaner.SVGXMLNode{
+		XMLName: xml.Name{Local: "path"},
+		Styles:  "fill:none;stroke:#770000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+	}
+
+	lines := pj.JoinerLines()
+	for _, line := range lines {
+		path := svgpath.SubPath{
+			X: float64(line[0].Major),
+			Y: float64(line[0].Minor),
+		}
+		for _, point := range line {
+			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
+				Command: svgpath.LineTo,
+				X:       float64(point.Major),
+				Y:       float64(point.Minor),
+			})
+		}
+		pathNode.Path = append(pathNode.Path, &path)
+	}
+
+	svg := cleaner.SVGXMLNode{
+		XMLName:  xml.Name{Local: "svg"},
+		Children: []*cleaner.SVGXMLNode{&pathNode},
+
+		// TODO: need to map real units here, and will also need to figure out how to display them in the browser.
+		Width:  "1000mm",
+		Height: "1000mm",
+	}
+
+	data, err := svg.Marshal()
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+func FindRuns(img *ColorImage, runHandler RunHandler) {
 	runStart := -1
 	checkReportRun := func(major, minor int) {
 		if runStart < 0 {
@@ -77,7 +129,7 @@ func FindRuns(img *ColorImage, reportRun func(center float32, minor int, width i
 		}
 		runLength := major - runStart
 		if runLength <= maxRunLength {
-			reportRun(float32(major+runStart)/2, minor, runLength)
+			runHandler.AddRun(float32(major+runStart)/2, runLength)
 		}
 		// End the current run.
 		runStart = -1
@@ -101,6 +153,7 @@ func FindRuns(img *ColorImage, reportRun func(center float32, minor int, width i
 		}
 		// check for finished run at end of row
 		checkReportRun(img.Width, y)
+		runHandler.NextMinor()
 	}
 }
 

@@ -29,25 +29,49 @@ func makeImage(rows ...string) *vectorize.ColorImage {
 	return &img
 }
 
-func TestRunDetection(t *testing.T) {
-	type Run struct {
-		Center float32
-		Minor  int
-		Width  int
-	}
+type testRun struct {
+	Center float32
+	Minor  int
+	Width  int
+}
 
-	test := func(img *vectorize.ColorImage, expectedRuns []Run) {
+type testRunHandler struct {
+	addRun    func(center float32, width int)
+	nextMinor func()
+}
+
+func (r *testRunHandler) AddRun(center float32, width int) {
+	r.addRun(center, width)
+}
+
+func (r *testRunHandler) NextMinor() {
+	r.nextMinor()
+}
+
+func (r *testRunHandler) JoinerLines() []vectorize.JoinerLine {
+	return nil
+}
+
+func TestRunDetection(t *testing.T) {
+	test := func(img *vectorize.ColorImage, expectedRuns []testRun) {
 		i := 0
-		vectorize.FindRuns(img, func(center float32, minor int, width int) {
-			if i >= len(expectedRuns) {
-				t.Fatalf("unexpected extra run")
-			}
-			diff := cmp.Diff(expectedRuns[i], Run{Center: center, Minor: minor, Width: width})
-			if diff != "" {
-				t.Fatalf("Run index %d incorrect: %s", i, diff)
-			}
-			i++
-		})
+		minor := 0
+		r := testRunHandler{
+			addRun: func(center float32, width int) {
+				if i >= len(expectedRuns) {
+					t.Fatalf("unexpected extra run")
+				}
+				diff := cmp.Diff(expectedRuns[i], testRun{Center: center, Minor: minor, Width: width})
+				if diff != "" {
+					t.Fatalf("Run index %d incorrect: %s", i, diff)
+				}
+				i++
+			},
+			nextMinor: func() {
+				minor++
+			},
+		}
+		vectorize.FindRuns(img, &r)
 		if i != len(expectedRuns) {
 			t.Fatalf("got fewer runs (%d) than expected (%d)", i, len(expectedRuns))
 		}
@@ -62,7 +86,7 @@ func TestRunDetection(t *testing.T) {
 		"◻◻◻◻◻◻◻◻",
 		"◼◼◼◼◼◼◼◼",
 		"◼◼◻◻◻◻◼◼",
-	), []Run{
+	), []testRun{
 		{Center: 6, Minor: 0, Width: 4},
 		{Center: 6, Minor: 1, Width: 4},
 		{Center: 4, Minor: 2, Width: 4},
