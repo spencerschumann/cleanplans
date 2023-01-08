@@ -33,9 +33,12 @@ func NewPointJoiner(bucketSize, maxMajor int) *PointJoiner {
 	}
 }
 
-func isLineAdmissable(line JoinerLine) bool {
-	// it's not a line if it doesn't have at least 2 points.
-	if len(line) < 2 {
+func IsLineAdmissable(line JoinerLine) bool {
+	// TODO: make this configurable.
+	const minLineLength = 5
+
+	// it's not a line if it doesn't have enough points.
+	if len(line) < minLineLength {
 		return false
 	}
 
@@ -44,7 +47,7 @@ func isLineAdmissable(line JoinerLine) bool {
 		totalWidth += float64(p.Width)
 	}
 	avgWidth := totalWidth / float64(len(line))
-	return len(line) > int(avgWidth*1.5)
+	return len(line) > int(avgWidth*1.3)
 }
 
 func (pj *PointJoiner) NextMinor() {
@@ -59,7 +62,7 @@ func (pj *PointJoiner) NextMinor() {
 			lastPoint := line[len(line)-1]
 			if int(lastPoint.Minor) < pj.minor-1 {
 				// Add the line to the output lines slice if it passes filtering criteria.
-				if isLineAdmissable(line) {
+				if IsLineAdmissable(line) {
 					pj.lines = append(pj.lines, line)
 				}
 

@@ -34,7 +34,7 @@ func mergePaths(path *svgpath.SubPath, pathStart bool, join *svgpath.SubPath, jo
 			// Get first segment of b
 			bsx, bsy := b.StartPoint()
 			bex, bey := b.EndPoint()
-			if len(a.DrawTo) > 1 {
+			if len(b.DrawTo) > 1 {
 				first := b.DrawTo[0]
 				bex, bey = first.X, first.Y
 			}
@@ -55,7 +55,10 @@ func mergePaths(path *svgpath.SubPath, pathStart bool, join *svgpath.SubPath, jo
 			dx := aex - bsx
 			dy := aey - bsy
 			distPaths := math.Sqrt(dx*dx + dy*dy)
-			if distPaths > 0.1 { // TODO: configurable
+			// IMPORTANT: this is being temporarily changed for debugging pixel-based merging. The unit expected here was mm.
+			//const maxDist = 0.1 // TODO: configurable
+			const maxDist = 20
+			if distPaths > maxDist {
 				connectWithLine = true
 			}
 		}

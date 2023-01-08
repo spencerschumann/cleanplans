@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"image"
 	imgcolor "image/color"
+	"math"
 	"strconv"
 )
 
@@ -72,10 +73,6 @@ func PDFJSImageToColorImage(image []byte, width, height, bitsPerPixel int) *Colo
 	}
 }
 
-// Configuration for Vectorize; hard-code for now, but will need to expose these somehow.
-// const backgroundColor = color.White
-const maxRunLength = 20
-
 type RunHandler interface {
 	AddRun(major float32, width int)
 	NextMinor()
@@ -92,19 +89,91 @@ func adjustLineEndpoints(line JoinerLine) {
 	line[last].Minor += 1
 }
 
+func clearHorizontalRuns(img *ColorImage, line JoinerLine) {
+	for _, pt := range line {
+		xStart := int(pt.Major - float32(pt.Width)/2)
+		xEnd := xStart + pt.Width
+		for x := xStart; x < xEnd; x++ {
+			img.Data[x+int(pt.Minor)*img.Width] = color.White
+		}
+	}
+}
+
+func filterLines(lines []JoinerLine, maxRunLength int) []JoinerLine {
+	var output []JoinerLine
+	for _, line := range lines {
+		output = append(output, filterLine(line, maxRunLength)...)
+	}
+	return output
+}
+
+func filterLine(line JoinerLine, maxRunLength int) []JoinerLine {
+	// Find median width
+	counts := make([]int, maxRunLength+1)
+	for _, pt := range line {
+		counts[pt.Width]++
+	}
+	maxCount := 0
+	median := 0
+	for i, count := range counts {
+		if maxCount < count {
+			maxCount = count
+			median = i
+		}
+	}
+
+	// Only allow widths of median +/- 1 or 20%
+	widthOk := func(width int) bool {
+		diff := math.Abs(float64(median - width))
+		return diff <= 1 || diff < (float64(median)*.2)
+	}
+
+	bestRunStart := -1
+	var lines []JoinerLine
+	checkReportRun := func(i int) {
+		if bestRunStart < 0 {
+			return
+		}
+		// TODO: may want to further trim the beginning and end of the subline with more strict requirements
+		subLine := line[bestRunStart:i]
+		if IsLineAdmissable(subLine) {
+			lines = append(lines, subLine)
+		}
+		bestRunStart = -1
+	}
+
+	for i, pt := range line {
+		if widthOk(pt.Width) {
+			if bestRunStart < 0 {
+				bestRunStart = i
+			}
+		} else {
+			checkReportRun(i)
+		}
+	}
+	checkReportRun(len(line))
+	return lines
+}
+
 func Vectorize(img *ColorImage) string {
+	// Configuration for Vectorize; hard-code for now, but will need to expose these somehow.
+	// const backgroundColor = color.White
+	const maxRunLength = 20
 
 	horizontalRunPathNode := cleaner.SVGXMLNode{
-		XMLName: xml.Name{Local: "path"},
-		Styles:  "fill:none;stroke:#770000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+		XMLName:  xml.Name{Local: "path"},
+		Styles:   "fill:none;stroke:#770000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+		Category: cleaner.CategoryFullCut,
 	}
-	verticalRunPathNode := cleaner.SVGXMLNode{
-		XMLName: xml.Name{Local: "path"},
-		Styles:  "fill:none;stroke:#0000cc;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
-	}
+	verticalRunPathNode := &horizontalRunPathNode
+	/*verticalRunPathNode := cleaner.SVGXMLNode{
+		XMLName:  xml.Name{Local: "path"},
+		Styles:   "fill:none;stroke:#0000cc;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+		Category: cleaner.CategoryFullCut,
+	}*/
 	svg := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "svg"},
-		Children: []*cleaner.SVGXMLNode{&horizontalRunPathNode, &verticalRunPathNode},
+		Children: []*cleaner.SVGXMLNode{&horizontalRunPathNode /*&verticalRunPathNode*/},
 
 		// Note: not using a unit specifier here for display, to match up with the png image. For
 		// the final output SVG (if that is the format I go with), these will need to be mapped to mm.
@@ -113,9 +182,10 @@ func Vectorize(img *ColorImage) string {
 	}
 
 	pj := NewPointJoiner(10, img.Width)
-	FindHorizontalRuns(img, pj)
-	lines := pj.JoinerLines()
+	FindHorizontalRuns(img, maxRunLength, pj)
+	lines := filterLines(pj.JoinerLines(), maxRunLength)
 	for _, line := range lines {
+		clearHorizontalRuns(img, line)
 		adjustLineEndpoints(line)
 		path := svgpath.SubPath{
 			X: float64(line[0].Major),
@@ -132,8 +202,8 @@ func Vectorize(img *ColorImage) string {
 	}
 
 	pj = NewPointJoiner(10, img.Height)
-	FindVerticalRuns(img, pj)
-	lines = pj.JoinerLines()
+	FindVerticalRuns(img, maxRunLength, pj)
+	lines = filterLines(pj.JoinerLines(), maxRunLength)
 	for _, line := range lines {
 		adjustLineEndpoints(line)
 		path := svgpath.SubPath{
@@ -150,6 +220,8 @@ func Vectorize(img *ColorImage) string {
 		verticalRunPathNode.Path = append(verticalRunPathNode.Path, &path)
 	}
 
+	cleaner.Simplify(&svg)
+
 	data, err := svg.Marshal()
 	if err != nil {
 		return err.Error()
@@ -157,7 +229,7 @@ func Vectorize(img *ColorImage) string {
 	return string(data)
 }
 
-func checkReportRun(major, minor, runStart int, runHandler RunHandler) {
+func checkReportRun(major, minor, runStart, maxRunLength int, runHandler RunHandler) {
 	if runStart < 0 {
 		return
 	}
@@ -167,7 +239,11 @@ func checkReportRun(major, minor, runStart int, runHandler RunHandler) {
 	}
 }
 
-func FindHorizontalRuns(img *ColorImage, runHandler RunHandler) {
+func FindHorizontalRuns(img *ColorImage, maxRunLength int, runHandler RunHandler) {
+	// To start with, just look for white and black pixels.
+	// This will of course need to be expanded to other colors, which could be done
+	// trivially by running multiple passes of this alg, one for each color. But it
+	// is probably more efficient to look for all colors at the same time.
 	i := 0
 	for y := 0; y < img.Height; y++ {
 		runStart := -1
@@ -181,17 +257,17 @@ func FindHorizontalRuns(img *ColorImage, runHandler RunHandler) {
 				}
 			} else {
 				// Non-black; check for finished run
-				checkReportRun(x, y, runStart, runHandler)
+				checkReportRun(x, y, runStart, maxRunLength, runHandler)
 				runStart = -1
 			}
 		}
 		// check for finished run at end of row
-		checkReportRun(img.Width, y, runStart, runHandler)
+		checkReportRun(img.Width, y, runStart, maxRunLength, runHandler)
 		runHandler.NextMinor()
 	}
 }
 
-func FindVerticalRuns(img *ColorImage, runHandler RunHandler) {
+func FindVerticalRuns(img *ColorImage, maxRunLength int, runHandler RunHandler) {
 	// Note: although it's possible to combine the implementations of this functinon and
 	// FindHorizontalRuns, the result would be significantly more complex due to the number
 	// of differences. Also this is one of the most performance critical loops in this
@@ -207,58 +283,12 @@ func FindVerticalRuns(img *ColorImage, runHandler RunHandler) {
 				}
 			} else {
 				// Non-black; check for finished run
-				checkReportRun(y, x, runStart, runHandler)
+				checkReportRun(y, x, runStart, maxRunLength, runHandler)
 				runStart = -1
 			}
 		}
 		// check for finished run at end of row
-		checkReportRun(img.Height, x, runStart, runHandler)
+		checkReportRun(img.Height, x, runStart, maxRunLength, runHandler)
 		runHandler.NextMinor()
 	}
 }
-
-/* first pass at this function:
-{
-	// To start with, just look for white and black pixels.
-	// This will of course need to be expanded to other colors, which could be done
-	// trivially by running multiple passes of this alg, one for each color. But it
-	// is probably more efficient to look for all colors at the same time.
-
-	// First pass: scan for horizontal runs, which are then assembled into vertical (or near vertical) lines.
-	i := 0
-	runStart := -1
-	//for y := 0; y < image.Height; y++ {
-	// For testing, load just the middle 2/3 of the file - works especially well with letter sized pages
-	//lines := [][]image.Point{}
-	//priorRunCenters := []float32{}
-	for y := img.Height / 6; y < img.Height*5/6; y++ {
-		runCenters := []float32{}
-		for x := 0; x < img.Width; x++ {
-			c := img.Data[i]
-			i++
-			if c == color.Black {
-				if runStart == -1 {
-					// new run
-					runStart = x
-				}
-			} else {
-				// Non-black; check for finished run
-				if runStart >= 0 {
-					runLength := x - runStart
-					if runLength <= maxRunLength {
-						//fmt.Printf("Got a run from %d to %d, y=%d\n", runStart, x-1, y)
-						runCenters = append(runCenters, float32(x+runStart))
-					}
-
-					// End the current run.
-					runStart = -1
-				}
-			}
-		}
-
-		//priorRunCenters = runCenters
-	}
-
-	return "done"
-}
-*/

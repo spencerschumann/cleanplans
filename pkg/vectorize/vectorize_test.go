@@ -71,7 +71,7 @@ func TestRunDetection(t *testing.T) {
 				minor++
 			},
 		}
-		vectorize.FindHorizontalRuns(img, &r)
+		vectorize.FindHorizontalRuns(img, 20, &r)
 		if i != len(expectedRuns) {
 			t.Fatalf("got fewer runs (%d) than expected (%d)", i, len(expectedRuns))
 		}
@@ -100,7 +100,7 @@ func TestRunDetection(t *testing.T) {
 func xTestLineDetection(t *testing.T) {
 	test := func(img *vectorize.ColorImage) {
 		pj := vectorize.NewPointJoiner(10, img.Width)
-		vectorize.FindHorizontalRuns(img, pj)
+		vectorize.FindHorizontalRuns(img, 20, pj)
 		lines := pj.JoinerLines()
 		t.Errorf("Lines: %#v\n", lines)
 	}
