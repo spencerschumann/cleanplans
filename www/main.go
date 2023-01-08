@@ -45,6 +45,8 @@ func goCleanPlans(this js.Value, args []js.Value) any {
 		fmt.Printf("Color histogram slice: %d %d\n", k, v)
 	}
 
+	svg := vectorize.Vectorize(ci)
+
 	var buf bytes.Buffer
 	err := png.Encode(&buf, ci)
 	if err != nil {
@@ -53,8 +55,6 @@ func goCleanPlans(this js.Value, args []js.Value) any {
 	}
 
 	fmt.Printf("Encoded png, %d bytes\n", buf.Len())
-
-	svg := vectorize.Vectorize(ci)
 
 	u8Array := js.Global().Get("Uint8Array").New(buf.Len())
 	js.CopyBytesToJS(u8Array, buf.Bytes())
