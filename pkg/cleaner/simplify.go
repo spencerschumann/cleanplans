@@ -1,6 +1,7 @@
 package cleaner
 
 import (
+	"cleanplans/pkg/cfg"
 	"cleanplans/pkg/svgpath"
 )
 
@@ -23,15 +24,7 @@ func Simplify(svg *SVGXMLNode) {
 			x, y = path.EndPoint()
 		}
 
-		// IMPORTANT: this needs to be configurable. It's being changed here from the assumption
-		// of mm units to pixel units, as part of the debugging. In the end all of these operations
-		// should operate on standardized, real-world mm units, because the end goal is to translate
-		// the input into something the needle cutter can process, and the limiting factor there
-		// is the needle width (around 0.8 mm) and the accuracy of the machine itself.
-		//const maxDist = 0.01
-		const maxDist = 20.0
-
-		neighbors := tree.findNeighbors(path, x, y, 0, maxDist)
+		neighbors := tree.findNeighbors(path, x, y, 0, cfg.PointMergeMaxDistance)
 		// For now, only merge if there's just one neighbor with the same start/end point.
 		// Could look at n-way intersections in the future, but for now just deal with the
 		// common case of adjacent pairs of paths.

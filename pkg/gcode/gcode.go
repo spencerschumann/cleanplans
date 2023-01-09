@@ -185,6 +185,9 @@ func GenerateSVGWithPaths(svg *cleaner.SVGXMLNode) {
 
 func Generate(svg *cleaner.SVGXMLNode) {
 	cleaner.SortPaths(svg)
+	// TODO: configurable - if the gcode processor supports curves, these can be left
+	// as curves. If it supports arcs but not curves, it would be better to convert them
+	// to arcs instead of lines.
 	curvesToLines(svg)
 
 	if false {
@@ -271,7 +274,7 @@ func iterate(svg *cleaner.SVGXMLNode, state *machineState, xyFeedRate, zFeedRate
 			fmt.Printf("\n(Object %s, path %d of %d)\n", child.ID, i+1, len(child.Path))
 
 			dist := distance(point{x: state.X, y: state.Y}, point{x: path.X, y: path.Y})
-			if dist > 0.1 {
+			if dist > 0.1 { // TODO: configurable
 				if state.Z <= 0 {
 					//fmt.Printf("G1 Z2.00 S3400.00 (Pen Up)\n")
 					fmt.Printf("G1 Z2.00 F%0.2f (Pen Up)\n", zFeedRate)

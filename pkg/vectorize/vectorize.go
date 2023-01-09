@@ -1,6 +1,7 @@
 package vectorize
 
 import (
+	"cleanplans/pkg/cfg"
 	"cleanplans/pkg/cleaner"
 	"cleanplans/pkg/color"
 	"cleanplans/pkg/svgpath"
@@ -99,17 +100,17 @@ func clearHorizontalRuns(img *ColorImage, line JoinerLine) {
 	}
 }
 
-func filterLines(lines []JoinerLine, maxRunLength int) []JoinerLine {
+func filterLines(lines []JoinerLine) []JoinerLine {
 	var output []JoinerLine
 	for _, line := range lines {
-		output = append(output, filterLine(line, maxRunLength)...)
+		output = append(output, filterLine(line)...)
 	}
 	return output
 }
 
-func filterLine(line JoinerLine, maxRunLength int) []JoinerLine {
+func filterLine(line JoinerLine) []JoinerLine {
 	// Find median width
-	counts := make([]int, maxRunLength+1)
+	counts := make([]int, cfg.VectorizeMaxRunLength+1)
 	for _, pt := range line {
 		counts[pt.Width]++
 	}
@@ -156,10 +157,6 @@ func filterLine(line JoinerLine, maxRunLength int) []JoinerLine {
 }
 
 func Vectorize(img *ColorImage) string {
-	// Configuration for Vectorize; hard-code for now, but will need to expose these somehow.
-	// const backgroundColor = color.White
-	const maxRunLength = 20
-
 	horizontalRunPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
 		Styles:   "fill:none;stroke:#770000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
@@ -182,8 +179,8 @@ func Vectorize(img *ColorImage) string {
 	}
 
 	pj := NewPointJoiner(10, img.Width)
-	FindHorizontalRuns(img, maxRunLength, pj)
-	lines := filterLines(pj.JoinerLines(), maxRunLength)
+	FindHorizontalRuns(img, pj)
+	lines := filterLines(pj.JoinerLines())
 	for _, line := range lines {
 		clearHorizontalRuns(img, line)
 		adjustLineEndpoints(line)
@@ -202,8 +199,8 @@ func Vectorize(img *ColorImage) string {
 	}
 
 	pj = NewPointJoiner(10, img.Height)
-	FindVerticalRuns(img, maxRunLength, pj)
-	lines = filterLines(pj.JoinerLines(), maxRunLength)
+	FindVerticalRuns(img, pj)
+	lines = filterLines(pj.JoinerLines())
 	for _, line := range lines {
 		adjustLineEndpoints(line)
 		path := svgpath.SubPath{
@@ -229,17 +226,17 @@ func Vectorize(img *ColorImage) string {
 	return string(data)
 }
 
-func checkReportRun(major, minor, runStart, maxRunLength int, runHandler RunHandler) {
+func checkReportRun(major, minor, runStart int, runHandler RunHandler) {
 	if runStart < 0 {
 		return
 	}
 	runLength := major - runStart
-	if runLength <= maxRunLength {
+	if runLength <= cfg.VectorizeMaxRunLength {
 		runHandler.AddRun(float32(major+runStart)/2, runLength)
 	}
 }
 
-func FindHorizontalRuns(img *ColorImage, maxRunLength int, runHandler RunHandler) {
+func FindHorizontalRuns(img *ColorImage, runHandler RunHandler) {
 	// To start with, just look for white and black pixels.
 	// This will of course need to be expanded to other colors, which could be done
 	// trivially by running multiple passes of this alg, one for each color. But it
@@ -257,17 +254,17 @@ func FindHorizontalRuns(img *ColorImage, maxRunLength int, runHandler RunHandler
 				}
 			} else {
 				// Non-black; check for finished run
-				checkReportRun(x, y, runStart, maxRunLength, runHandler)
+				checkReportRun(x, y, runStart, runHandler)
 				runStart = -1
 			}
 		}
 		// check for finished run at end of row
-		checkReportRun(img.Width, y, runStart, maxRunLength, runHandler)
+		checkReportRun(img.Width, y, runStart, runHandler)
 		runHandler.NextMinor()
 	}
 }
 
-func FindVerticalRuns(img *ColorImage, maxRunLength int, runHandler RunHandler) {
+func FindVerticalRuns(img *ColorImage, runHandler RunHandler) {
 	// Note: although it's possible to combine the implementations of this functinon and
 	// FindHorizontalRuns, the result would be significantly more complex due to the number
 	// of differences. Also this is one of the most performance critical loops in this
@@ -283,12 +280,12 @@ func FindVerticalRuns(img *ColorImage, maxRunLength int, runHandler RunHandler) 
 				}
 			} else {
 				// Non-black; check for finished run
-				checkReportRun(y, x, runStart, maxRunLength, runHandler)
+				checkReportRun(y, x, runStart, runHandler)
 				runStart = -1
 			}
 		}
 		// check for finished run at end of row
-		checkReportRun(img.Height, x, runStart, maxRunLength, runHandler)
+		checkReportRun(img.Height, x, runStart, runHandler)
 		runHandler.NextMinor()
 	}
 }

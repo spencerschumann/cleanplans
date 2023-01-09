@@ -1,6 +1,7 @@
 package vectorize
 
 import (
+	"cleanplans/pkg/cfg"
 	"math"
 )
 
@@ -34,11 +35,8 @@ func NewPointJoiner(bucketSize, maxMajor int) *PointJoiner {
 }
 
 func IsLineAdmissable(line JoinerLine) bool {
-	// TODO: make this configurable.
-	const minLineLength = 5
-
 	// it's not a line if it doesn't have enough points.
-	if len(line) < minLineLength {
+	if len(line) < cfg.VectorizeMinLinePixelLength {
 		return false
 	}
 

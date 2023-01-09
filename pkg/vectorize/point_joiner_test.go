@@ -1,6 +1,7 @@
 package vectorize_test
 
 import (
+	"cleanplans/pkg/cfg"
 	"cleanplans/pkg/vectorize"
 	"sort"
 	"testing"
@@ -57,6 +58,11 @@ func TestPointJoiner(t *testing.T) {
 		// TODO: add tests for behavior around bucket boundaries
 	}
 
+	oldMax := cfg.VectorizeMaxRunLength
+	defer func() {
+		cfg.VectorizeMaxRunLength = oldMax
+	}()
+	cfg.VectorizeMinLinePixelLength = 2
 	for _, test := range tests {
 		pj := vectorize.NewPointJoiner(10, 19)
 		for _, row := range test.Input {

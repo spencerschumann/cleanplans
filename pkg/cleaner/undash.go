@@ -1,6 +1,7 @@
 package cleaner
 
 import (
+	"cleanplans/pkg/cfg"
 	"cleanplans/pkg/svgpath"
 	"math"
 )
@@ -55,10 +56,7 @@ func mergePaths(path *svgpath.SubPath, pathStart bool, join *svgpath.SubPath, jo
 			dx := aex - bsx
 			dy := aey - bsy
 			distPaths := math.Sqrt(dx*dx + dy*dy)
-			// IMPORTANT: this is being temporarily changed for debugging pixel-based merging. The unit expected here was mm.
-			//const maxDist = 0.1 // TODO: configurable
-			const maxDist = 20
-			if distPaths > maxDist {
+			if distPaths > cfg.MergePathMaxDistance {
 				connectWithLine = true
 			}
 		}
@@ -110,7 +108,7 @@ func Undash(svg *SVGXMLNode) {
 	var mergeCounts map[*svgpath.SubPath]int
 
 	mergeOne := func(path *svgpath.SubPath, pathStart bool, join *svgpath.SubPath, joinStart bool) bool {
-		merged := mergePaths(path, pathStart, join, joinStart, 45) // TODO: configurable limit angle
+		merged := mergePaths(path, pathStart, join, joinStart, cfg.UndashMaxAngle)
 		if !merged {
 			return false
 		}
@@ -124,10 +122,6 @@ func Undash(svg *SVGXMLNode) {
 		return true
 	}
 
-	// TODO: configurable max/min distance
-	maxDist := 4.0
-	minDist := 0.5
-
 	tryMerge := func(path *svgpath.SubPath, start bool) bool {
 		var x, y float64
 		if start {
@@ -136,19 +130,18 @@ func Undash(svg *SVGXMLNode) {
 			x, y = path.EndPoint()
 		}
 
-		neighbors := tree.findNeighbors(path, x, y, minDist, maxDist)
+		neighbors := tree.findNeighbors(path, x, y, cfg.UndashMinDist, cfg.UndashMaxDist)
 		for _, neighbor := range neighbors {
 			ds := distance(x, y, neighbor, true)
 			de := distance(x, y, neighbor, false)
 			if ds < de {
 				// TODO: also check for similar slopes at start/end points?
 				// For now, just join segments if they are within the right distance range.
-				// TODO: configurable min/max distance values
-				if minDist <= ds && ds <= maxDist && mergeOne(path, start, neighbor, true) {
+				if cfg.UndashMinDist <= ds && ds <= cfg.UndashMaxDist && mergeOne(path, start, neighbor, true) {
 					return true
 				}
 			} else {
-				if minDist <= de && de <= maxDist && mergeOne(path, start, neighbor, false) {
+				if cfg.UndashMinDist <= de && de <= cfg.UndashMaxDist && mergeOne(path, start, neighbor, false) {
 					return true
 				}
 			}
@@ -197,7 +190,7 @@ func Undash(svg *SVGXMLNode) {
 				ex, ey := path.EndPoint()
 				dx, dy := sx-ex, sy-ey
 				dist := math.Sqrt(dx*dx + dy*dy)
-				if minDist <= dist && dist <= maxDist {
+				if cfg.UndashMinDist <= dist && dist <= cfg.UndashMaxDist {
 					path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
 						Command: svgpath.ClosePath,
 						X:       path.X,
