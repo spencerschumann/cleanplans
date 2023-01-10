@@ -168,11 +168,52 @@ func TestDouglasPeucker(t *testing.T) {
 				},
 			},
 		},
+		{
+			points: []Point{
+				{0, 0},
+				{1, 1},
+				{math.Sqrt(9.0 / 2.0), math.Sqrt(9.0 / 2.0)},
+				{3, 3},
+				{2 + math.Sqrt(9.0/2.0), math.Sqrt(9.0 / 2.0)},
+				{5, 1},
+				{6, 0},
+			},
+			epsilon: .01,
+			simplified: []any{
+				Arc{
+					Start:     Point{X: 0, Y: 0},
+					End:       Point{X: 6, Y: 0},
+					Center:    Point{X: 3, Y: 0},
+					Clockwise: true,
+				},
+			},
+		},
+		{
+			points: []Point{
+				{0, -4},
+				{0, -3},
+				{0, -2},
+				{0, -1},
+				{0, 0},
+				{1, 1},
+				{math.Sqrt(9.0 / 2.0), math.Sqrt(9.0 / 2.0)},
+				{3, 3},
+				{2 + math.Sqrt(9.0/2.0), math.Sqrt(9.0 / 2.0)},
+				{5, 1},
+				{6, 0},
+			},
+			epsilon: .01,
+			simplified: []any{
+				Arc{
+					Start:     Point{X: 0, Y: 0},
+					End:       Point{X: 6, Y: 0},
+					Center:    Point{X: 3, Y: 0},
+					Clockwise: true,
+				},
+			},
+		},
 	}
-	for i, test := range tests {
-		if i < len(tests)-1 {
-			continue
-		}
+	for _, test := range tests {
 		simplified := DouglasPeucker(test.points, test.epsilon)
 		if !reflect.DeepEqual(simplified, test.simplified) {
 			t.Errorf("DouglasPeucker(%v, %f) = %+v, want %+v", test.points, test.epsilon, simplified, test.simplified)
