@@ -19,6 +19,11 @@ type SVGXMLNode struct {
 	Transform string        `xml:"transform,attr,omitempty"`
 	Children  []*SVGXMLNode `xml:",any"`
 
+	// Attributes for circle elements. This is getting rediculous...really need to break this down.
+	CX     float64 `xml:"cx,attr,omitempty"`
+	CY     float64 `xml:"cy,attr,omitempty"`
+	Radius float64 `xml:"r,attr,omitempty"`
+
 	// inkscape-specific data; inkscape crashes if an extension doesn't preserve the namedview element.
 	Docname   string     `xml:"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd docname,attr,omitempty"`
 	NamedView *NamedView `xml:"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd namedview,omitempty"`
@@ -114,7 +119,9 @@ func (n *SVGXMLNode) Marshal() ([]byte, error) {
 	}
 	for _, child := range n.Children {
 		// Back to a path string
-		child.D = svgpath.ToString(child.Path)
+		if child.Path != nil {
+			child.D = svgpath.ToString(child.Path)
+		}
 
 		// Reserialize style to capture changes
 		child.serializeStyle()
