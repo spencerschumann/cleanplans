@@ -99,7 +99,7 @@ func TestRunDetection(t *testing.T) {
 
 func xTestLineDetection(t *testing.T) {
 	test := func(img *vectorize.ColorImage) {
-		pj := vectorize.NewPointJoiner(10, img.Width)
+		pj := vectorize.NewPointJoiner(10, img.Width, 1)
 		vectorize.FindHorizontalRuns(img, pj)
 		lines := pj.JoinerLines()
 		t.Errorf("Lines: %#v\n", lines)

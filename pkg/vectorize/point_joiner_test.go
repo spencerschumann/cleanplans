@@ -64,7 +64,7 @@ func TestPointJoiner(t *testing.T) {
 	}()
 	cfg.VectorizeMinLinePixelLength = 2
 	for _, test := range tests {
-		pj := vectorize.NewPointJoiner(10, 19)
+		pj := vectorize.NewPointJoiner(10, 19, 1)
 		for _, row := range test.Input {
 			for _, major := range row {
 				pj.AddRun(major, 0)

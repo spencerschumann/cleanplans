@@ -1,7 +1,6 @@
 package geometry
 
 import (
-	"fmt"
 	"math"
 )
 
@@ -12,12 +11,14 @@ type Point struct {
 	Y float64
 }
 
-type Vector = Point
+type Vector2 = Point
 
 type LineSegment struct {
 	A Point
 	B Point
 }
+
+type Polyline []Point
 
 type Circle struct {
 	Center Point
@@ -33,17 +34,10 @@ type Arc struct {
 
 func findCenter(A, B, C Point) Point {
 	// See https://math.stackexchange.com/a/1114321.
-	// There are 3 equations that can be written for this,
-	// where A, B, and C are chosen from the 3 input points,
-	// and we're trying to find the origin point O:
+	// System of equations for finding the origin/center point O:
 	//
-	// (A.X-B.X) * O.X + (A.Y-B.Y) * O.Y = 0.5*(A.X*A.X - B.X*B.X + A.Y*A.Y - B.Y*B.Y)
-	// (B.X-C.X) * O.X + (B.Y-C.Y) * O.Y = 0.5*(B.X*B.X - C.X*C.X + B.Y*B.Y - C.Y*C.Y)
-	// (C.X-A.X) * O.X + (C.Y-A.Y) * O.Y = 0.5*(C.X*C.X - A.X*A.X + C.Y*C.Y - A.Y*A.Y)
-	//
-	// Normally only two of the three are needed to find O, unless the
-	// determinant of the corresponding matrix is 0 in which case a different
-	// selection of equations is needed.
+	//   (A.X-B.X) * O.X + (A.Y-B.Y) * O.Y = 0.5*(A.X*A.X - B.X*B.X + A.Y*A.Y - B.Y*B.Y)
+	//   (B.X-C.X) * O.X + (B.Y-C.Y) * O.Y = 0.5*(B.X*B.X - C.X*C.X + B.Y*B.Y - C.Y*C.Y)
 
 	determinant := func(a, b, c, d float64) float64 {
 		return a*d - b*c
@@ -79,34 +73,26 @@ func findCenter(A, B, C Point) Point {
 }
 
 func FindArc(start, mid, end Point) Arc {
-	center := findCenter(start, mid, end)
-
-	// Determine whether the arc should sweep clockwise or counterclockwise
-	clockwise := end.Minus(start).CrossProductZ(mid.Minus(start)) > 0
-
-	fmt.Printf("FindArc(s=%#v, m=%#v, e=%#v) => c=%#v, cw=%t\n",
-		start, mid, end, center, clockwise)
-
 	return Arc{
 		Start:     start,
 		End:       end,
-		Center:    center,
-		Clockwise: clockwise,
+		Center:    findCenter(start, mid, end),
+		Clockwise: end.Minus(start).CrossProductZ(mid.Minus(start)) > 0,
 	}
 }
 
-func (a Vector) Minus(b Vector) Vector {
-	return Vector{
+func (a Vector2) Minus(b Vector2) Vector2 {
+	return Vector2{
 		X: a.X - b.X,
 		Y: a.Y - b.Y,
 	}
 }
 
-func (v Vector) Magnitude() float64 {
+func (v Vector2) Magnitude() float64 {
 	return math.Hypot(v.X, v.Y)
 }
 
-func (a Vector) CrossProductZ(b Vector) float64 {
+func (a Vector2) CrossProductZ(b Vector2) float64 {
 	return a.X*b.Y - a.Y*b.X
 }
 
@@ -137,54 +123,18 @@ func (p Point) DistanceToCircle(c Circle) float64 {
 	return math.Abs(math.Sqrt((p.X-c.Center.X)*(p.X-c.Center.X)+(p.Y-c.Center.Y)*(p.Y-c.Center.Y)) - c.Radius)
 }
 
-type Step struct {
-	Name     string
-	Points   Polyline
-	Chord    LineSegment
-	FarPoint Point
-	Arc      Arc
-	Result   []any
-	Message  string
-}
-
-type Polyline []Point
-
 // Simplify simplifies the polyline using the Douglas-Peucker algorithm
 // and returns the simplified curve as a mix of line segments and circular arcs.
-func (points Polyline) Simplify(epsilon float64, steps chan<- Step) []any {
+func (points Polyline) Simplify(epsilon float64) Polyline {
 	if len(points) < 2 {
-		return []any{}
+		return nil
 	}
-
-	addStep := func(step Step) {
-		if steps == nil {
-			return
-		}
-		steps <- step
-	}
-
-	addStep(Step{
-		Name:   "simplify",
-		Points: points,
-	})
 
 	// find the point with the max distance from the line segment between the first and last points
 	firstPoint, lastPoint := points[0], points[len(points)-1]
 	chord := LineSegment{A: firstPoint, B: lastPoint}
-
-	addStep(Step{
-		Name:   "chord",
-		Points: points,
-		Chord:  chord,
-	})
-
 	if len(points) == 2 {
-		addStep(Step{
-			Name:   "result",
-			Points: points,
-			Result: []any{chord},
-		})
-		return []any{chord}
+		return Polyline{firstPoint, lastPoint}
 	}
 
 	dmax := 0.0
@@ -201,69 +151,43 @@ func (points Polyline) Simplify(epsilon float64, steps chan<- Step) []any {
 			dmax = d
 		}
 	}
-	addStep(Step{
-		Name:     "maxDist",
-		Points:   points,
-		Chord:    chord,
-		FarPoint: points[index],
-	})
 
 	if dmax < epsilon {
-		addStep(Step{
-			Name:   "result",
-			Points: points,
-			Result: []any{chord},
-		})
-		return []any{chord}
+		return Polyline{firstPoint, lastPoint}
 	}
 
 	// TODO: need another heuristic to decide if an arc should be used, to avoid transforming
 	// an intentional polyline into an arc. Perhaps look at distances between successive points?
-	arcLineSegLengthMax := 2.0
-	if maxSegLen < arcLineSegLengthMax {
-		// Check if all points are within epsilon of the circular arc defined by the first, last, and max distance points.
-		arc := FindArc(firstPoint, points[index], lastPoint)
-		addStep(Step{
-			Name:   "findArc",
-			Points: points,
-			Arc:    arc,
-		})
-		if !math.IsNaN(arc.Center.X) && !math.IsNaN(arc.Center.Y) {
-			radius := arc.Start.Distance(arc.Center)
-			allWithinEpsilon := true
-			for _, p := range points {
-				if math.Abs(p.Distance(arc.Center)-radius) > epsilon {
-					addStep(Step{
-						Name:     "arcDistanceExceeded",
-						Points:   points,
-						Arc:      arc,
-						FarPoint: p,
-					})
-					allWithinEpsilon = false
-					break
+	//
+	// I think a better approach will be to just simplify to lines in this first step, and then
+	// go back and look for arcs in an additional step.
+	/*
+		arcLineSegLengthMax := 2.0
+		if maxSegLen < arcLineSegLengthMax {
+			// Check if all points are within epsilon of the circular arc defined by the first, last, and max distance points.
+			arc := FindArc(firstPoint, points[index], lastPoint)
+			if !math.IsNaN(arc.Center.X) && !math.IsNaN(arc.Center.Y) {
+				radius := arc.Start.Distance(arc.Center)
+				allWithinEpsilon := true
+				for _, p := range points {
+					if math.Abs(p.Distance(arc.Center)-radius) > epsilon {
+						allWithinEpsilon = false
+						break
+					}
+				}
+				if allWithinEpsilon {
+					return []any{arc}
 				}
 			}
-			if allWithinEpsilon {
-				addStep(Step{
-					Name:   "result",
-					Points: points,
-					Result: []any{arc},
-				})
-				return []any{arc}
-			}
 		}
-	}
+	*/
 
 	// note: need to be careful on the recursive step to not call with < 2 points
-	recResults1 := Polyline(points[:index+1]).Simplify(epsilon, steps)
-	recResults2 := Polyline(points[index:]).Simplify(epsilon, steps)
-	result := make([]any, len(recResults1)+len(recResults2))
+	recResults1 := Polyline(points[:index+1]).Simplify(epsilon)
+	recResults2 := Polyline(points[index:]).Simplify(epsilon)
+	/*result := make([]any, len(recResults1)+len(recResults2))
 	copy(result, recResults1)
 	copy(result[len(recResults1):], recResults2)
-	addStep(Step{
-		Name:   "result",
-		Points: points,
-		Result: result,
-	})
-	return result
+	return result*/
+	return append(recResults1, recResults2...)
 }

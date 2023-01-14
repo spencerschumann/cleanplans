@@ -111,14 +111,14 @@ func TestFindArc(t *testing.T) {
 	}
 }
 
-func TestDouglasPeucker(t *testing.T) {
+func TestPolylineSimplify(t *testing.T) {
 	tests := []struct {
-		points     []Point
+		points     Polyline
 		epsilon    float64
 		simplified []any
 	}{
 		{
-			points: []Point{
+			points: Polyline{
 				{0, 0},
 				{1, 1},
 				{2, 2},
@@ -134,7 +134,7 @@ func TestDouglasPeucker(t *testing.T) {
 			},
 		},
 		{
-			points: []Point{
+			points: Polyline{
 				{0, 0},
 				{1, 0},
 				{2, 0},
@@ -149,7 +149,7 @@ func TestDouglasPeucker(t *testing.T) {
 			},
 		},
 		{
-			points: []Point{
+			points: Polyline{
 				{0, 0},
 				{1, 1},
 				{2, 2},
@@ -169,16 +169,16 @@ func TestDouglasPeucker(t *testing.T) {
 			},
 		},
 		{
-			points: []Point{
+			points: Polyline{
 				{0, 0},
-				{1, 1},
-				{math.Sqrt(9.0 / 2.0), math.Sqrt(9.0 / 2.0)},
-				{3, 3},
-				{2 + math.Sqrt(9.0/2.0), math.Sqrt(9.0 / 2.0)},
-				{5, 1},
+				{0.4, 1.5},
+				{1.5, 2.6},
+				{3.0, 3.0},
+				{4.5, 2.6},
+				{5.6, 1.5},
 				{6, 0},
 			},
-			epsilon: .01,
+			epsilon: .1,
 			simplified: []any{
 				Arc{
 					Start:     Point{X: 0, Y: 0},
@@ -189,20 +189,20 @@ func TestDouglasPeucker(t *testing.T) {
 			},
 		},
 		{
-			points: []Point{
+			points: Polyline{
 				{0, -4},
 				{0, -3},
 				{0, -2},
 				{0, -1},
 				{0, 0},
-				{1, 1},
-				{math.Sqrt(9.0 / 2.0), math.Sqrt(9.0 / 2.0)},
-				{3, 3},
-				{2 + math.Sqrt(9.0/2.0), math.Sqrt(9.0 / 2.0)},
-				{5, 1},
+				{0.4, 1.5},
+				{1.5, 2.6},
+				{3.0, 3.0},
+				{4.5, 2.6},
+				{5.6, 1.5},
 				{6, 0},
 			},
-			epsilon: .01,
+			epsilon: .1,
 			simplified: []any{
 				Arc{
 					Start:     Point{X: 0, Y: 0},

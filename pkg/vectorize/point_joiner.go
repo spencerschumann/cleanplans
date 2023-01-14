@@ -2,6 +2,7 @@ package vectorize
 
 import (
 	"cleanplans/pkg/cfg"
+	"cleanplans/pkg/geometry"
 	"math"
 )
 
@@ -16,21 +17,43 @@ type JoinerLinePoint struct {
 // if the Y values differ by exactly 1, and the X values differ by at most 1.
 type JoinerLine []JoinerLinePoint
 
-type PointJoiner struct {
-	minor      int
-	bucketSize int
-	buckets    [][]JoinerLine
-	lines      []JoinerLine
+func (jl JoinerLine) ToPolyline(xMajor bool) geometry.Polyline {
+	var polyline geometry.Polyline
+	if xMajor {
+		for _, p := range jl {
+			polyline = append(polyline, geometry.Point{
+				X: float64(p.Major),
+				Y: float64(p.Minor),
+			})
+		}
+	} else {
+		for _, p := range jl {
+			polyline = append(polyline, geometry.Point{
+				X: float64(p.Minor),
+				Y: float64(p.Major),
+			})
+		}
+	}
+	return polyline
 }
 
-func NewPointJoiner(bucketSize, maxMajor int) *PointJoiner {
+type PointJoiner struct {
+	minor         int
+	bucketSize    int
+	buckets       [][]JoinerLine
+	lines         []JoinerLine
+	maxMajorDelta float64
+}
+
+func NewPointJoiner(bucketSize, maxMajor int, maxMajorDelta float64) *PointJoiner {
 	numBuckets := maxMajor / bucketSize
 	if maxMajor%bucketSize > 0 {
 		numBuckets++
 	}
 	return &PointJoiner{
-		bucketSize: bucketSize,
-		buckets:    make([][]JoinerLine, numBuckets),
+		bucketSize:    bucketSize,
+		buckets:       make([][]JoinerLine, numBuckets),
+		maxMajorDelta: maxMajorDelta,
 	}
 }
 
@@ -87,7 +110,7 @@ func (pj *PointJoiner) AddRun(major float32, width int) {
 		// Check if the point can be added to any of the existing lines in the bucket
 		for i, line := range pj.buckets[bucketIdx] {
 			lastPoint := line[len(line)-1]
-			if math.Abs(float64(major-lastPoint.Major)) <= 1 {
+			if math.Abs(float64(major-lastPoint.Major)) <= pj.maxMajorDelta {
 				point := JoinerLinePoint{Major: major, Minor: float32(pj.minor), Width: width}
 				pj.buckets[bucketIdx][i] = append(line, point)
 				return

@@ -9,19 +9,6 @@ async function loadGoWASM() {
     console.log("*** call go.run(inst)")
     // TODO: must ensure that this gets called before calling goCleanPlans later on.
     go.run(wasm.instance);
-
-    let test = goTestSimplifyPolyline();
-    console.log(test);
-    let index
-    let setSVGIndex = (i) => {
-        index = Math.max(Math.min(i, test.length - 1), 0)
-        loadSVG(test[index].data)
-        document.getElementById('step-number').innerHTML = `step ${index} of ${test.length - 1}   ${test[index].msg}`
-    }
-    setSVGIndex(0)
-
-    document.getElementById('next-button').onclick = () => setSVGIndex(index + 1)
-    document.getElementById('prev-button').onclick = () => setSVGIndex(index - 1)
 }
 loadGoWASM()
 

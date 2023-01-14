@@ -82,12 +82,18 @@ type RunHandler interface {
 // This helps close gaps, but it also doesn't take into consideration line slope. It may
 // be better to do away with this when adding the code to join line segments to eliminate
 // gaps.
-func adjustLineEndpoints(line JoinerLine) {
+func adjustLineEndpoints(line JoinerLine) JoinerLine {
+	// Actually, let's just try trimming it down - the first and last points are dubious.
+	if len(line) > 4 {
+		return line[1 : len(line)-2]
+	}
+
 	last := len(line) - 1
 	for i := 1; i < last; i++ {
 		line[i].Minor += 0.5
 	}
 	line[last].Minor += 1
+	return line
 }
 
 func clearHorizontalRuns(img *ColorImage, line JoinerLine) {
@@ -178,46 +184,49 @@ func Vectorize(img *ColorImage) string {
 		Height: strconv.Itoa(img.Height),
 	}
 
-	pj := NewPointJoiner(10, img.Width)
+	pj := NewPointJoiner(10, img.Width, 1)
 	FindHorizontalRuns(img, pj)
 	lines := filterLines(pj.JoinerLines())
 	for _, line := range lines {
 		clearHorizontalRuns(img, line)
-		adjustLineEndpoints(line)
+		line = adjustLineEndpoints(line)
+		line := line.ToPolyline(true).Simplify(0.8)
 		path := svgpath.SubPath{
-			X: float64(line[0].Major),
-			Y: float64(line[0].Minor),
+			X: line[0].X,
+			Y: line[0].Y,
 		}
 		for _, point := range line {
 			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
 				Command: svgpath.LineTo,
-				X:       float64(point.Major),
-				Y:       float64(point.Minor),
+				X:       point.X,
+				Y:       point.Y,
 			})
 		}
 		horizontalRunPathNode.Path = append(horizontalRunPathNode.Path, &path)
 	}
 
-	pj = NewPointJoiner(10, img.Height)
+	// Make this second pass more lenient than the first
+	pj = NewPointJoiner(10, img.Height, 2)
 	FindVerticalRuns(img, pj)
 	lines = filterLines(pj.JoinerLines())
 	for _, line := range lines {
-		adjustLineEndpoints(line)
+		line = adjustLineEndpoints(line)
+		line := line.ToPolyline(false).Simplify(0.8)
 		path := svgpath.SubPath{
-			X: float64(line[0].Minor),
-			Y: float64(line[0].Major),
+			X: line[0].X,
+			Y: line[0].Y,
 		}
 		for _, point := range line {
 			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
 				Command: svgpath.LineTo,
-				X:       float64(point.Minor),
-				Y:       float64(point.Major),
+				X:       point.X,
+				Y:       point.Y,
 			})
 		}
 		verticalRunPathNode.Path = append(verticalRunPathNode.Path, &path)
 	}
 
-	cleaner.Simplify(&svg)
+	//cleaner.Simplify(&svg)
 
 	data, err := svg.Marshal()
 	if err != nil {
