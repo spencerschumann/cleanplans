@@ -214,7 +214,7 @@ func TestDouglasPeucker(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		simplified := DouglasPeucker(test.points, test.epsilon)
+		simplified := Polyline(test.points).Simplify(test.epsilon)
 		if !reflect.DeepEqual(simplified, test.simplified) {
 			t.Errorf("DouglasPeucker(%v, %f) = %+v, want %+v", test.points, test.epsilon, simplified, test.simplified)
 		}
