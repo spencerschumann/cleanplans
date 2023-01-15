@@ -12,6 +12,74 @@ async function loadGoWASM() {
 }
 loadGoWASM()
 
+// Image zooming and scrolling
+{
+    let viewport = document.getElementById("img-viewport");
+    let image = document.getElementById("img-container");
+    let scale = 1
+    let logScale = Math.log(scale);
+
+    let posX = 0;
+    let posY = 0;
+
+    function eventViewportCoords(event) {
+        let rect = viewport.getBoundingClientRect()
+        return {
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top,
+        }
+    }
+
+    function update() {
+        requestAnimationFrame(() => {
+            image.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`
+            //image.style.transform = `scale(${scale}) translate(${posX}px, ${posY}px)`
+        })
+    }
+
+    viewport.addEventListener('wheel', (event) => {
+        event.preventDefault()
+        let coords = eventViewportCoords(event)
+        if (event.ctrlKey) {
+            let oldScale = scale
+            logScale -= event.deltaY * 0.01
+            scale = Math.exp(logScale)
+            posX = scale / oldScale * (posX - coords.x) + coords.x
+            posY = scale / oldScale * (posY - coords.y) + coords.y
+        } else {
+            posX -= event.deltaX
+            posY -= event.deltaY
+        }
+        update()
+    })
+
+    viewport.addEventListener("mousedown", (event) => {
+        event.preventDefault()
+        let startX = event.clientX;
+        let startY = event.clientY;
+        let startLeft = posX;
+        let startTop = posY;
+
+        viewport.addEventListener("mousemove", onMouseMove);
+        viewport.addEventListener("mouseup", onMouseUp);
+
+        function onMouseMove(event) {
+            event.preventDefault()
+            let deltaX = event.clientX - startX;
+            let deltaY = event.clientY - startY;
+            posX = startLeft + deltaX;
+            posY = startTop + deltaY;
+            update()
+        }
+
+        function onMouseUp() {
+            event.preventDefault()
+            viewport.removeEventListener("mousemove", onMouseMove);
+            viewport.removeEventListener("mouseup", onMouseUp);
+        }
+    });
+}
+
 // Get references to the file input, load button, URL input, and load URL button elements
 const fileInput = document.getElementById('file-input');
 const pngImage = document.getElementById('png-image');

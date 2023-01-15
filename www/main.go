@@ -11,6 +11,14 @@ import (
 	"syscall/js"
 )
 
+// TODO: try running this code via GopherJS. How does it compare in size and speed
+// against the same code compiled with the Go and/or TinyGo WASM targets?
+//
+// Why would I choose this approach? Well, I'm choosing Go for this project
+// for several reasons, and I want to be able to run the same code in the browser,
+// or as an inkscape extension on windows, mac, and linux, and maybe in other
+// places in the future. Go's self-contained executables make this a breeze.
+
 func main() {
 	funcs := []struct {
 		name string
