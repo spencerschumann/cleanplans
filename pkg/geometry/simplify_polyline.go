@@ -185,9 +185,15 @@ func (points Polyline) Simplify(epsilon float64) Polyline {
 	// note: need to be careful on the recursive step to not call with < 2 points
 	recResults1 := Polyline(points[:index+1]).Simplify(epsilon)
 	recResults2 := Polyline(points[index:]).Simplify(epsilon)
+
+	// TODO: not sure if the direct append is actually safe, and may need to allocate
+	// instead...but it may be even better to completely avoid the allocation and just
+	// modify the original input slice instead, and just pass indices around and copy
+	// elements as needed to consolidate.
 	/*result := make([]any, len(recResults1)+len(recResults2))
 	copy(result, recResults1)
 	copy(result[len(recResults1):], recResults2)
 	return result*/
+
 	return append(recResults1, recResults2...)
 }

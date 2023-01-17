@@ -6,6 +6,7 @@ import (
 	"cleanplans/pkg/color"
 	"cleanplans/pkg/svgpath"
 	"encoding/xml"
+	"fmt"
 	"image"
 	imgcolor "image/color"
 	"math"
@@ -46,27 +47,41 @@ func (ci *ColorImage) ColorIndexAt(x, y int) uint8 {
 // returning a slice of color.Color values with the same width and height
 // as the input image.
 func PDFJSImageToColorImage(image []byte, width, height, bitsPerPixel int) *ColorImage {
-	if bitsPerPixel == 1 {
-		// Not yet supported.
-		return nil
-	}
-
-	stride := 0
-	if bitsPerPixel == 32 {
-		stride = 4
-	}
-	if bitsPerPixel == 24 {
-		stride = 3
-	}
-
-	size := len(image)
 	data := make([]color.Color, width*height)
 	j := 0
-	for i := 0; i < size; i += stride {
-		// Ignore alpha for now - assume fully opaque images
-		data[j] = color.RemapColor(image[i], image[i+1], image[i+2])
-		j++
+	if bitsPerPixel == 1 {
+		x := 0
+	readImage:
+		for _, b := range image {
+			for bit := 7; bit >= 0; bit-- {
+				if b&(1<<bit) == 0 {
+					data[j] = color.Black
+				} else {
+					data[j] = color.White
+				}
+				j++
+				x++
+				if x >= width {
+					x = 0
+					break
+				}
+				if j >= len(data) {
+					break readImage
+				}
+			}
+		}
+	} else if bitsPerPixel == 32 || bitsPerPixel == 24 {
+		stride := bitsPerPixel / 8
+		size := len(image)
+		for i := 0; i < size; i += stride {
+			// Ignore alpha for now - assume fully opaque images
+			data[j] = color.RemapColor(image[i], image[i+1], image[i+2])
+			j++
+		}
+	} else {
+		fmt.Printf("Error! bits per pixel is %d, not one of the supported values 1/24/32.\n", bitsPerPixel)
 	}
+
 	return &ColorImage{
 		Width:  width,
 		Height: height,
@@ -129,10 +144,10 @@ func filterLine(line JoinerLine) []JoinerLine {
 		}
 	}
 
-	// Only allow widths of median +/- 1 or 20%
+	// Only allow widths of median +/- 3 (one pixel on each side, plus one for slop) or 20%
 	widthOk := func(width int) bool {
 		diff := math.Abs(float64(median - width))
-		return diff <= 1 || diff < (float64(median)*.2)
+		return diff <= 3 || diff < (float64(median)*.2)
 	}
 
 	bestRunStart := -1
@@ -159,13 +174,14 @@ func filterLine(line JoinerLine) []JoinerLine {
 		}
 	}
 	checkReportRun(len(line))
+	//fmt.Printf("  filterLine(%v) =>\n    %v\n", line, lines)
 	return lines
 }
 
 func Vectorize(img *ColorImage) string {
 	horizontalRunPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
-		Styles:   "fill:none;stroke:#770000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+		Styles:   "fill:none;stroke:#009900;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
 	verticalRunPathNode := &horizontalRunPathNode
@@ -185,17 +201,18 @@ func Vectorize(img *ColorImage) string {
 	}
 
 	pj := NewPointJoiner(10, img.Width, 1)
+	//fmt.Println("\n******** Find Horizontal Runs")
 	FindHorizontalRuns(img, pj)
 	lines := filterLines(pj.JoinerLines())
 	for _, line := range lines {
 		clearHorizontalRuns(img, line)
 		line = adjustLineEndpoints(line)
-		line := line.ToPolyline(true).Simplify(0.8)
+		line := line.ToPolyline(true).Simplify(1.4)
 		path := svgpath.SubPath{
 			X: line[0].X,
 			Y: line[0].Y,
 		}
-		for _, point := range line {
+		for _, point := range line[1:] {
 			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
 				Command: svgpath.LineTo,
 				X:       point.X,
@@ -207,16 +224,17 @@ func Vectorize(img *ColorImage) string {
 
 	// Make this second pass more lenient than the first
 	pj = NewPointJoiner(10, img.Height, 2)
+	//fmt.Println("\n******** Find Vertical Runs")
 	FindVerticalRuns(img, pj)
 	lines = filterLines(pj.JoinerLines())
 	for _, line := range lines {
 		line = adjustLineEndpoints(line)
-		line := line.ToPolyline(false).Simplify(0.8)
+		line := line.ToPolyline(false).Simplify(1.4)
 		path := svgpath.SubPath{
 			X: line[0].X,
 			Y: line[0].Y,
 		}
-		for _, point := range line {
+		for _, point := range line[1:] {
 			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
 				Command: svgpath.LineTo,
 				X:       point.X,

@@ -3,6 +3,7 @@ package vectorize_test
 import (
 	"cleanplans/pkg/color"
 	"cleanplans/pkg/vectorize"
+	"fmt"
 	"testing"
 	"unicode/utf8"
 
@@ -120,4 +121,18 @@ func xTestLineDetection(t *testing.T) {
 		"◻◻◼◼◼◼◻◻",
 		"◻◻◻◻◻◻◻◻",
 	))
+}
+
+func TestLargerImage(t *testing.T) {
+	// TODO: for these larger ones, it would be better to inline a png file instead.
+	img := makeImage(
+		"◻◻◻◻◻◻◻◻",
+		"◻◻◼◼◼◼◻◻",
+		"◻◻◼◼◼◼◻◻",
+		"◻◻◼◼◼◼◻◻",
+		"◻◻◼◼◼◼◻◻",
+		"◻◻◻◻◻◻◻◻",
+	)
+
+	fmt.Println(vectorize.Vectorize(img))
 }

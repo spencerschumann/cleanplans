@@ -40,7 +40,7 @@ func (jl JoinerLine) ToPolyline(xMajor bool) geometry.Polyline {
 type PointJoiner struct {
 	minor         int
 	bucketSize    int
-	buckets       [][]JoinerLine
+	buckets       []map[JoinerLinePoint]JoinerLine
 	lines         []JoinerLine
 	maxMajorDelta float64
 }
@@ -50,9 +50,13 @@ func NewPointJoiner(bucketSize, maxMajor int, maxMajorDelta float64) *PointJoine
 	if maxMajor%bucketSize > 0 {
 		numBuckets++
 	}
+	buckets := make([]map[JoinerLinePoint]JoinerLine, numBuckets)
+	for i := 0; i < numBuckets; i++ {
+		buckets[i] = map[JoinerLinePoint]JoinerLine{}
+	}
 	return &PointJoiner{
 		bucketSize:    bucketSize,
-		buckets:       make([][]JoinerLine, numBuckets),
+		buckets:       buckets,
 		maxMajorDelta: maxMajorDelta,
 	}
 }
@@ -77,50 +81,86 @@ func (pj *PointJoiner) NextMinor() {
 	// Clear out old lines that have ended, and move them to the lines slice.
 	// Otherwise the buckets will continue grow beyond their expected small size
 	// and we won't get the desired O(1) performance.
-	for bucketIdx, bucket := range pj.buckets {
-		for i := 0; i < len(bucket); i++ {
-			line := bucket[i]
+	for _, bucket := range pj.buckets {
+		for lineKey, line := range bucket {
 			lastPoint := line[len(line)-1]
+			// TODO: maybe relax this - rather than ending the line if there's any glitch,
+			// it might be better to see if it picks back up within a few more minor values.
 			if int(lastPoint.Minor) < pj.minor-1 {
 				// Add the line to the output lines slice if it passes filtering criteria.
 				if IsLineAdmissable(line) {
+					//fmt.Println("Output line:", line)
 					pj.lines = append(pj.lines, line)
 				}
-
-				// Remove the line from the bucket
-				bucket[i] = bucket[len(bucket)-1]
-				bucket = bucket[:len(bucket)-1]
-				pj.buckets[bucketIdx] = bucket
-				i--
+				delete(bucket, lineKey)
 			}
 		}
 	}
 }
 
+func (pj *PointJoiner) overlap(major float32, width int, lastPoint JoinerLinePoint) bool {
+	if math.Abs(float64(major-lastPoint.Major)) <= pj.maxMajorDelta {
+		return true
+	}
+	// Hack for now - let's see if this works.
+	if pj.maxMajorDelta > 1 {
+		// See if there's any overlap at all
+		return math.Abs(float64(major-lastPoint.Major)) <= float64(width+lastPoint.Width)/2
+	}
+	return false
+}
+
 func (pj *PointJoiner) AddRun(major float32, width int) {
+	//fmt.Printf("Run: major=%04.1f minor=%02d width=%02d", major, pj.minor, width)
+	//checkedOverlap := false
 	// Find the appropriate bucket for the point
 	pointBucketIdx := int(major / float32(pj.bucketSize))
 
 	// Check the point's bucket, and the buckets adjacent to it.
-	for bucketIdx := pointBucketIdx - 1; bucketIdx <= pointBucketIdx+1 && bucketIdx < len(pj.buckets); bucketIdx++ {
-		if bucketIdx < 0 {
-			continue
-		}
-
+	firstBucketIdx := pointBucketIdx - 1
+	if firstBucketIdx < 0 {
+		firstBucketIdx = 0
+	}
+	lastBucketIdx := pointBucketIdx + 1
+	if lastBucketIdx >= len(pj.buckets) {
+		lastBucketIdx = len(pj.buckets) - 1
+	}
+	for bucketIdx := firstBucketIdx; bucketIdx <= lastBucketIdx; bucketIdx++ {
 		// Check if the point can be added to any of the existing lines in the bucket
-		for i, line := range pj.buckets[bucketIdx] {
+		for lineKey, line := range pj.buckets[bucketIdx] {
 			lastPoint := line[len(line)-1]
-			if math.Abs(float64(major-lastPoint.Major)) <= pj.maxMajorDelta {
+			/*if checkedOverlap {
+				fmt.Print("                                      ")
+			} else {
+				fmt.Print("     ")
+				checkedOverlap = true
+			}*/
+
+			/*fmt.Printf("overlap with major=%04.1f minor=%04.1f width=%02d maxMajorDelta=%03.1f? %t\n",
+			lastPoint.Major, lastPoint.Minor, width, pj.maxMajorDelta,
+			pj.overlap(major, width, lastPoint))*/
+
+			if pj.overlap(major, width, lastPoint) {
 				point := JoinerLinePoint{Major: major, Minor: float32(pj.minor), Width: width}
-				pj.buckets[bucketIdx][i] = append(line, point)
+				line = append(line, point)
+				if bucketIdx == pointBucketIdx {
+					pj.buckets[bucketIdx][lineKey] = line
+				} else {
+					// Slanted lines move from bucket to bucket along their lengths.
+					delete(pj.buckets[bucketIdx], lineKey)
+					pj.buckets[pointBucketIdx][lineKey] = line
+				}
 				return
 			}
 		}
 	}
+	/*if !checkedOverlap {
+		fmt.Println()
+	}*/
 
 	// If the point can't be added to any of the existing lines, create a new line in the bucket
-	pj.buckets[pointBucketIdx] = append(pj.buckets[pointBucketIdx],
-		JoinerLine{{Major: major, Minor: float32(pj.minor), Width: width}})
+	point := JoinerLinePoint{Major: major, Minor: float32(pj.minor), Width: width}
+	pj.buckets[pointBucketIdx][point] = JoinerLine{point}
 }
 
 func (pj *PointJoiner) JoinerLines() []JoinerLine {

@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"cleanplans/pkg/color"
 	"cleanplans/pkg/vectorize"
 	"fmt"
 	"image/png"
@@ -75,6 +76,25 @@ func goCleanPlans(this js.Value, args []js.Value) any {
 	js.CopyBytesToGo(data, image)
 
 	ci := vectorize.PDFJSImageToColorImage(data, width, height, bitsPerPixel)
+	fmt.Printf("Created ColorImage %p, data=%p, width=%d, height=%d\n", ci, ci.Data, ci.Width, ci.Height)
+
+	if ci.Width <= 100 && ci.Height <= 100 {
+		// For debugging, output an image that can be fed into tests
+		str := "makeImage(\n"
+		for y := 0; y < ci.Height; y++ {
+			str += "    \""
+			for x := 0; x < ci.Width; x++ {
+				if ci.Data[x+y*ci.Width] == color.White {
+					str += "◻"
+				} else {
+					str += "◼"
+				}
+			}
+			str += "\",\n"
+		}
+		str += ")"
+		fmt.Println(str)
+	}
 
 	// drop the data array now and run a GC cycle to conserve memory
 	data = nil
@@ -83,15 +103,13 @@ func goCleanPlans(this js.Value, args []js.Value) any {
 	fmt.Println("Stats (sys/mallocs):", stats.Sys, stats.Mallocs)
 
 	// Let's do a histogram of ci for debug.
-	hist := make([]int, 9)
+	/*hist := make([]int, 9)
 	for _, c := range ci.Data {
 		hist[c] += 1
 	}
 	for k, v := range hist {
 		fmt.Printf("Color histogram slice: %d %d\n", k, v)
-	}
-
-	svg := vectorize.Vectorize(ci)
+	}*/
 
 	var buf bytes.Buffer
 	err := png.Encode(&buf, ci)
@@ -100,7 +118,7 @@ func goCleanPlans(this js.Value, args []js.Value) any {
 		return nil
 	}
 
-	fmt.Printf("Encoded png, %d bytes\n", buf.Len())
+	svg := vectorize.Vectorize(ci)
 
 	u8Array := js.Global().Get("Uint8Array").New(buf.Len())
 	js.CopyBytesToJS(u8Array, buf.Bytes())

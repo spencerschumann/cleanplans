@@ -42,7 +42,7 @@ loadGoWASM()
         let coords = eventViewportCoords(event)
         if (event.ctrlKey) {
             let oldScale = scale
-            logScale -= event.deltaY * 0.01
+            logScale -= event.deltaY * 0.008
             scale = Math.exp(logScale)
             posX = scale / oldScale * (posX - coords.x) + coords.x
             posY = scale / oldScale * (posY - coords.y) + coords.y
@@ -116,6 +116,9 @@ function loadPdfFromFile() {
 fileInput.addEventListener('change', loadPdfFromFile);
 
 function loadSVG(svgStr) {
+    if (svgStr.length < 1000) {
+        console.log(`SVG: ${svgStr}`)
+    }
     let oldSVG = document.getElementById('svg-image');
     if (oldSVG) {
         oldSVG.remove();
@@ -129,7 +132,8 @@ function loadSVG(svgStr) {
 async function loadPdfFromData(data) {
     let doc = await pdfjsLib.getDocument(data).promise;
     console.log(`Pages: ${doc.numPages}`);
-    let page = await doc.getPage(7);
+    let testPageNum = Math.min(7, doc.numPages);
+    let page = await doc.getPage(testPageNum);
     console.log(`Page: ${page}`);
     console.log(`  User Units: ${page.userUnit}`);
     console.log(`  View: ${page.view}`);
@@ -158,7 +162,7 @@ async function loadPdfFromData(data) {
         } else if (op === pdfjsLib.OPS.paintImageXObject) {
             console.log(`   Op: paintImageXObject ${args[0]}`);
             let obj = page.objs.get(args[0]);
-            {
+            /*{
                 let start = performance.now()
                 let sum = 0
                 for (let i = 0; i < obj.data.length; i++) {
@@ -166,7 +170,7 @@ async function loadPdfFromData(data) {
                 }
                 let end = performance.now()
                 console.log(`    Time to find average (${sum / obj.data.length}) in JS: ${end - start}`)
-            }
+            }*/
             {
                 let start = performance.now()
                 let bitsPerPixel = 0
@@ -188,8 +192,7 @@ async function loadPdfFromData(data) {
                 let result = goCleanPlans(obj.data, obj.width, obj.height, bitsPerPixel);
 
                 let end = performance.now()
-                console.log(`called cleanPlans(), result is ${result.png.length} bytes`)
-                console.log(`     Time to find average in Go: ${end - start}`)
+                console.log(`goCleanPlans run time: ${end - start}`)
 
                 const blob = new Blob([result.png], { type: 'image/png' });
                 const url = URL.createObjectURL(blob);
