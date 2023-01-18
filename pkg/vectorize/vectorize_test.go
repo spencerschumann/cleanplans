@@ -1,11 +1,14 @@
 package vectorize_test
 
 import (
-	"cleanplans/pkg/color"
-	"cleanplans/pkg/vectorize"
+	"embed"
 	"fmt"
+	"image/png"
 	"testing"
 	"unicode/utf8"
+
+	"cleanplans/pkg/color"
+	"cleanplans/pkg/vectorize"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -123,16 +126,44 @@ func xTestLineDetection(t *testing.T) {
 	))
 }
 
-func TestLargerImage(t *testing.T) {
-	// TODO: for these larger ones, it would be better to inline a png file instead.
-	img := makeImage(
-		"◻◻◻◻◻◻◻◻",
-		"◻◻◼◼◼◼◻◻",
-		"◻◻◼◼◼◼◻◻",
-		"◻◻◼◼◼◼◻◻",
-		"◻◻◼◼◼◼◻◻",
-		"◻◻◻◻◻◻◻◻",
-	)
+//go:embed testdata/*.png
+var pngData embed.FS
 
+func loadImage(path string) *vectorize.ColorImage {
+	file, _ := pngData.Open(path)
+	defer file.Close()
+	pngImg, _ := png.Decode(file)
+	img := vectorize.ColorImage{
+		Width:  pngImg.Bounds().Max.X,
+		Height: pngImg.Bounds().Max.Y,
+	}
+	data := make([]color.Color, img.Width*img.Height)
+	j := 0
+	for y := 0; y < img.Height; y++ {
+		for x := 0; x < img.Width; x++ {
+			// TODO: if I need to read large images, this will probably be inefficient.
+			// Better to access image bytes directly based on common types.
+			r, g, b, _ := pngImg.At(x, y).RGBA()
+			data[j] = color.RemapColor(uint8(r>>8), uint8(g>>8), uint8(b>>8))
+			j++
+		}
+	}
+	img.Data = data
+	return &img
+}
+
+func TestLargerImage(t *testing.T) {
+
+	// TODO: need more tests with images with more noise and jitter.
+	// TODO: need better handling of ends of lines, with their frequent
+	// "hooks". Need to steer the lines toward minimizing error rather
+	// than just picking a start and end point for a line segment and
+	// calling it good if all segments are within the error range.
+	// TODO: need to increase allowance for line histerisys - my
+	// eye really wants to connect the line segments when I inspect
+	// the results, but the current algorithms here break them up if
+	// even one pixel is misplaced.
+
+	img := loadImage("testdata/rough_diagonal.png")
 	fmt.Println(vectorize.Vectorize(img))
 }

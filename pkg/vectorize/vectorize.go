@@ -99,9 +99,9 @@ type RunHandler interface {
 // gaps.
 func adjustLineEndpoints(line JoinerLine) JoinerLine {
 	// Actually, let's just try trimming it down - the first and last points are dubious.
-	if len(line) > 4 {
+	/*if len(line) > 4 {
 		return line[1 : len(line)-2]
-	}
+	}*/
 
 	last := len(line) - 1
 	for i := 1; i < last; i++ {

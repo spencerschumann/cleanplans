@@ -139,12 +139,7 @@ func (points Polyline) Simplify(epsilon float64) Polyline {
 
 	dmax := 0.0
 	index := 0
-	maxSegLen := points[0].Distance(points[1])
 	for i := 1; i < len(points)-1; i++ {
-		segLen := points[i].Distance(points[i+1])
-		if segLen < maxSegLen {
-			maxSegLen = segLen
-		}
 		d := chord.Distance(points[i])
 		if d > dmax {
 			index = i
@@ -195,5 +190,5 @@ func (points Polyline) Simplify(epsilon float64) Polyline {
 	copy(result[len(recResults1):], recResults2)
 	return result*/
 
-	return append(recResults1, recResults2...)
+	return append(recResults1[:len(recResults1)-1], recResults2...)
 }
