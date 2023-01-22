@@ -30,6 +30,7 @@ const (
 	Magenta
 	Cyan
 	Orange
+	LightGray
 )
 
 var Palette = color.Palette{
@@ -42,6 +43,7 @@ var Palette = color.Palette{
 	color.RGBA{R: 0xcc, G: 0x00, B: 0xcc, A: 0xff}, // Magenta
 	color.RGBA{R: 0x00, G: 0xbb, B: 0xdd, A: 0xff}, // Cyan
 	color.RGBA{R: 0xff, G: 0xdd, B: 0x00, A: 0xff}, // Orange
+	color.RGBA{R: 0xdd, G: 0xdd, B: 0xdd, A: 0xff}, // LightGray
 }
 
 func ColorToImageColor(c Color) color.Color {

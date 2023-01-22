@@ -4,6 +4,7 @@ import (
 	"cleanplans/pkg/cfg"
 	"cleanplans/pkg/cleaner"
 	"cleanplans/pkg/color"
+	"cleanplans/pkg/geometry"
 	"cleanplans/pkg/svgpath"
 	"encoding/xml"
 	"fmt"
@@ -116,20 +117,30 @@ func clearHorizontalRuns(img *ColorImage, line JoinerLine) {
 		xStart := int(pt.Major - float32(pt.Width)/2)
 		xEnd := xStart + pt.Width
 		for x := xStart; x < xEnd; x++ {
-			img.Data[x+int(pt.Minor)*img.Width] = color.White
+			img.Data[x+int(pt.Minor)*img.Width] = color.LightGray
 		}
 	}
 }
 
-func filterLines(lines []JoinerLine) []JoinerLine {
+func clearVerticalRuns(img *ColorImage, line JoinerLine) {
+	for _, pt := range line {
+		yStart := int(pt.Major - float32(pt.Width)/2)
+		yEnd := yStart + pt.Width
+		for y := yStart; y < yEnd; y++ {
+			img.Data[int(pt.Minor)+y*img.Width] = color.LightGray
+		}
+	}
+}
+
+func filterLines(pj *PointJoiner, lines []JoinerLine) []JoinerLine {
 	var output []JoinerLine
 	for _, line := range lines {
-		output = append(output, filterLine(line)...)
+		output = append(output, filterLine(pj, line)...)
 	}
 	return output
 }
 
-func filterLine(line JoinerLine) []JoinerLine {
+func filterLine(pj *PointJoiner, line JoinerLine) []JoinerLine {
 	// Find median width
 	counts := make([]int, cfg.VectorizeMaxRunLength+1)
 	for _, pt := range line {
@@ -158,7 +169,7 @@ func filterLine(line JoinerLine) []JoinerLine {
 		}
 		// TODO: may want to further trim the beginning and end of the subline with more strict requirements
 		subLine := line[bestRunStart:i]
-		if IsLineAdmissable(subLine) {
+		if pj.IsLineAdmissable(subLine) {
 			lines = append(lines, subLine)
 		}
 		bestRunStart = -1
@@ -178,13 +189,34 @@ func filterLine(line JoinerLine) []JoinerLine {
 	return lines
 }
 
+func trimLines(lines []JoinerLine) []JoinerLine {
+	var result []JoinerLine
+	for _, line := range lines {
+		totalWidth := 0.0
+		for _, pt := range line {
+			totalWidth += float64(pt.Width)
+		}
+		avgWidth := totalWidth / float64(len(line))
+
+		// Trim avgWidth segments off the beginning and end of the line; if there's nothing left, remove it completely.
+		trim := int(avgWidth*1.0 + 0.5)
+		if trim == 0 {
+			trim = 1
+		}
+		if len(line) > trim*3 {
+			result = append(result, line[trim:len(line)-trim])
+		}
+	}
+	return result
+}
+
 func Vectorize(img *ColorImage) string {
-	horizontalRunPathNode := cleaner.SVGXMLNode{
+	runPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
-		Styles:   "fill:none;stroke:#009900;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+		Styles:   "fill:none;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
-	verticalRunPathNode := &horizontalRunPathNode
+	//verticalRunPathNode := &horizontalRunPathNode
 	/*verticalRunPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
 		Styles:   "fill:none;stroke:#0000cc;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
@@ -192,7 +224,7 @@ func Vectorize(img *ColorImage) string {
 	}*/
 	svg := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "svg"},
-		Children: []*cleaner.SVGXMLNode{&horizontalRunPathNode /*&verticalRunPathNode*/},
+		Children: []*cleaner.SVGXMLNode{&runPathNode /*&verticalRunPathNode*/},
 
 		// Note: not using a unit specifier here for display, to match up with the png image. For
 		// the final output SVG (if that is the format I go with), these will need to be mapped to mm.
@@ -200,14 +232,14 @@ func Vectorize(img *ColorImage) string {
 		Height: strconv.Itoa(img.Height),
 	}
 
-	pj := NewPointJoiner(10, img.Width, 1)
-	//fmt.Println("\n******** Find Horizontal Runs")
+	/*pj := NewAlternateJoiner(10, img.Width)
+	start := time.Now()
 	FindHorizontalRuns(img, pj)
-	lines := filterLines(pj.JoinerLines())
+	fhrTime := time.Now()
+	fmt.Println("*** Time for FindHorizontalRuns():", fhrTime.Sub(start))
+	lines := pj.Lines()
+	fmt.Println("*** Time for Lines():", time.Since(fhrTime))
 	for _, line := range lines {
-		clearHorizontalRuns(img, line)
-		line = adjustLineEndpoints(line)
-		line := line.ToPolyline(true).Simplify(1.4)
 		path := svgpath.SubPath{
 			X: line[0].X,
 			Y: line[0].Y,
@@ -220,29 +252,112 @@ func Vectorize(img *ColorImage) string {
 			})
 		}
 		horizontalRunPathNode.Path = append(horizontalRunPathNode.Path, &path)
+	}*/
+
+	addPoint := func(x, y float64) {
+		svg.Children = append(svg.Children, &cleaner.SVGXMLNode{
+			XMLName: xml.Name{Local: "circle"},
+			CX:      x,
+			CY:      y,
+			Radius:  0.3,
+			Styles:  "fill:#00ff00",
+		})
 	}
 
-	// Make this second pass more lenient than the first
-	pj = NewPointJoiner(10, img.Height, 2)
-	//fmt.Println("\n******** Find Vertical Runs")
-	FindVerticalRuns(img, pj)
-	lines = filterLines(pj.JoinerLines())
-	for _, line := range lines {
-		line = adjustLineEndpoints(line)
-		line := line.ToPolyline(false).Simplify(1.4)
+	addLine := func(line geometry.Polyline) {
 		path := svgpath.SubPath{
 			X: line[0].X,
 			Y: line[0].Y,
 		}
+		addPoint(line[0].X, line[0].Y)
 		for _, point := range line[1:] {
 			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
 				Command: svgpath.LineTo,
 				X:       point.X,
 				Y:       point.Y,
 			})
+			addPoint(point.X, point.Y)
 		}
-		verticalRunPathNode.Path = append(verticalRunPathNode.Path, &path)
+		runPathNode.Path = append(runPathNode.Path, &path)
 	}
+
+	// First pass: find perfectly vertical lines
+	pj := NewPointJoiner(10, img.Width, 0)
+	FindHorizontalRuns(img, pj)
+	lines := pj.JoinerLines()
+	lines = filterLines(pj, lines)
+	for _, line := range lines {
+		clearHorizontalRuns(img, line)
+		line = adjustLineEndpoints(line)
+		line := line.ToPolyline(true).Simplify(0.01)
+		addLine(line)
+	}
+
+	// Second pass: find perfectly horizontal lines
+	pj = NewPointJoiner(10, img.Height, 0)
+	FindVerticalRuns(img, pj)
+	lines = pj.JoinerLines()
+	lines = filterLines(pj, lines)
+	for _, line := range lines {
+		clearVerticalRuns(img, line)
+		line = adjustLineEndpoints(line)
+		line := line.ToPolyline(false).Simplify(0.01)
+		addLine(line)
+	}
+
+	// Third pass: find diagonals up to 45 degrees off vertical
+	pj = NewPointJoiner(10, img.Width, 1)
+	pj.MinAspectRatio = 2.0
+	FindHorizontalRuns(img, pj)
+	lines = pj.JoinerLines()
+	// Remove the first few and last few points; on the diagonals, these are sus.
+	lines = trimLines(lines)
+	lines = filterLines(pj, lines)
+	for _, line := range lines {
+		clearHorizontalRuns(img, line)
+		line = adjustLineEndpoints(line)
+		line := line.ToPolyline(true).Simplify(0.9)
+		addLine(line)
+	}
+
+	// Fourth pass: find remaining diagonals
+	pj = NewPointJoiner(10, img.Height, 2)
+	pj.MinAspectRatio = 1.3
+	FindVerticalRuns(img, pj)
+	lines = pj.JoinerLines()
+	// Remove the first few and last few points; on the diagonals, these are sus.
+	lines = trimLines(lines)
+	lines = filterLines(pj, lines)
+	for _, line := range lines {
+		clearVerticalRuns(img, line)
+		line = adjustLineEndpoints(line)
+		line := line.ToPolyline(false).Simplify(0.9)
+		addLine(line)
+	}
+
+	/*
+		// Make this second pass more lenient than the first
+		pj = NewPointJoiner(10, img.Height, 2)
+		//fmt.Println("\n******** Find Vertical Runs")
+		FindVerticalRuns(img, pj)
+		lines = pj.JoinerLines()
+		//lines = filterLines(lines)
+		for _, line := range lines {
+			line = adjustLineEndpoints(line)
+			line := line.ToPolyline(false).Simplify(1.4)
+			path := svgpath.SubPath{
+				X: line[0].X,
+				Y: line[0].Y,
+			}
+			for _, point := range line[1:] {
+				path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
+					Command: svgpath.LineTo,
+					X:       point.X,
+					Y:       point.Y,
+				})
+			}
+			verticalRunPathNode.Path = append(verticalRunPathNode.Path, &path)
+		}*/
 
 	//cleaner.Simplify(&svg)
 

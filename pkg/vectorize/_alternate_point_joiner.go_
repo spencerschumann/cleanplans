@@ -1,0 +1,151 @@
+
+type AlternateJoinerPoint struct {
+	// TODO: consistency with float types - probably will want to
+	// just use float64 everywhere, since it's the most efficient
+	// for GopherJS.
+	X     float32
+	Y     float32
+	Width int
+}
+
+type AlternateJoiner struct {
+	y          float32
+	rows       [][]AlternateJoinerPoint
+	xHistogram map[float32]int
+}
+
+func NewAlternateJoiner(bucketSize, maxMajor int) *AlternateJoiner {
+	return &AlternateJoiner{
+		rows:       [][]AlternateJoinerPoint{{}},
+		xHistogram: map[float32]int{},
+	}
+}
+
+func (aj *AlternateJoiner) AddRun(x float32, width int) {
+	for int(aj.y) >= len(aj.rows) {
+		aj.rows = append(aj.rows, []AlternateJoinerPoint{})
+	}
+
+	aj.xHistogram[x]++
+
+	aj.rows[int(aj.y)] = append(aj.rows[int(aj.y)], AlternateJoinerPoint{
+		X:     x,
+		Y:     aj.y,
+		Width: width,
+	})
+}
+
+func (aj *AlternateJoiner) NextMinor() {
+	aj.y++
+}
+
+// findRunIndex returns the index in row of the point with X value x.
+// Returns len(row) if not found. row must be sorted by X.
+func findRunIndex(row []AlternateJoinerPoint, x float32, hint int) int {
+	/*i := sort.Search(len(row), func(i int) bool {
+		return x <= row[i].X
+	})
+	if i < len(row) && row[i].X == x {
+		return i
+	}
+	return len(row)*/
+	if len(row) == 0 {
+		return -1
+	}
+	i := hint
+	if i >= len(row) {
+		i = len(row) - 1
+	}
+	if i < 0 {
+		i = 0
+	}
+	if row[i].X == x {
+		return i
+	}
+	if row[i].X > x {
+		for i--; i >= 0; i-- {
+			if row[i].X == x {
+				return i
+			}
+		}
+	} else {
+		for i++; i < len(row); i++ {
+			if row[i].X == x {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// findRunsByX returns all runs whose X value is x.
+func (aj *AlternateJoiner) findRunsByX(x float32) []AlternateJoinerPoint {
+	var runs []AlternateJoinerPoint
+	i := 0
+	for _, row := range aj.rows {
+		i = findRunIndex(row, x, i)
+		if i >= 0 {
+			runs = append(runs, row[i])
+		}
+	}
+	return runs
+}
+
+func (aj *AlternateJoiner) Lines() []geometry.Polyline {
+	// The idea for this alternate joiner is to combine the point joining, filtering, and simplification
+	// into one pass, using the additional information to find best-fit lines even in the face of noise,
+	// dropouts, etc.
+
+	// TODO: despeckle the runs
+
+	// First phase: take care of the easy cases, with exact solutions: horizontal and vertical lines.
+	// These tend to make up a majority of the lines in directly rasterized documents. For scanned
+	// documents this case is less likely, but by handling them first we can avoid approximate lines
+	// when there's a clear exact line present.
+	var xs []float32
+	for x := range aj.xHistogram {
+		xs = append(xs, x)
+	}
+	sort.Slice(xs, func(i, j int) bool {
+		return aj.xHistogram[xs[i]] > aj.xHistogram[xs[j]]
+	})
+
+	var lines []geometry.Polyline
+	// Look at vertical line candidates, focusing on highest number of x values first
+	for _, x := range xs {
+		runs := aj.findRunsByX(x)
+		// Each sequence of adjacent runs with matching widths is a line.
+		// For this first pass, be very strict on the criteria.
+		var firstPoint AlternateJoinerPoint
+		var lastPoint AlternateJoinerPoint
+		for i := 0; i <= len(runs); i++ {
+			if i >= len(runs) || runs[i].Y != lastPoint.Y+1 || runs[i].Width != lastPoint.Width {
+				// end line
+				length := lastPoint.Y - firstPoint.Y
+				if length > float32(lastPoint.Width)*1.3 {
+					lines = append(lines, geometry.Polyline{
+						// TODO: also need to mark this line as high confidence, so that
+						// its endpoints don't get simplified away or moved. But line endpoints
+						// can be extended further in the same direction.
+						{X: float64(firstPoint.X), Y: float64(firstPoint.Y)},
+						{X: float64(lastPoint.X), Y: float64(lastPoint.Y + 1)},
+					})
+				}
+				if i >= len(runs) {
+					break
+				}
+				firstPoint = AlternateJoinerPoint{Width: -1}
+			}
+			lastPoint = runs[i]
+			if firstPoint.Width != lastPoint.Width {
+				// new line
+				firstPoint = lastPoint
+			}
+		}
+	}
+
+	// 1. Find a set of maybe connected points (could have some gaps, etc)
+	// 2. Run DP alg variant to simplify, and for nearly straight runs, see if there's a best fit
+
+	return lines
+}
