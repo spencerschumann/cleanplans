@@ -155,10 +155,10 @@ func filterLine(pj *PointJoiner, line JoinerLine) []JoinerLine {
 		}
 	}
 
-	// Only allow widths of median +/- 3 (one pixel on each side, plus one for slop) or 20%
+	// Only allow widths of median +/- 2.5 (one pixel on each side, plus a little slop) or 20%
 	widthOk := func(width int) bool {
 		diff := math.Abs(float64(median - width))
-		return diff <= 3 || diff < (float64(median)*.2)
+		return diff <= 2.5 || diff < (float64(median)*.2)
 	}
 
 	bestRunStart := -1
@@ -281,42 +281,44 @@ func Vectorize(img *ColorImage) string {
 		runPathNode.Path = append(runPathNode.Path, &path)
 	}
 
-	// First pass: find perfectly vertical lines
-	pj := NewPointJoiner(10, img.Width, 0)
+	// // First pass: find perfectly vertical lines
+	// pj := NewPointJoiner(10, img.Width, 0)
+	// pj.MinAspectRatio = 2
+	// FindHorizontalRuns(img, pj)
+	// lines := pj.JoinerLines()
+	// lines = filterLines(pj, lines)
+	// for _, line := range lines {
+	// 	clearHorizontalRuns(img, line)
+	// 	line = adjustLineEndpoints(line)
+	// 	line := line.ToPolyline(true).Simplify(0.01)
+	// 	addLine(line)
+	// }
+
+	// // Second pass: find perfectly horizontal lines
+	// pj = NewPointJoiner(10, img.Height, 0)
+	// pj.MinAspectRatio = 2
+	// FindVerticalRuns(img, pj)
+	// lines = pj.JoinerLines()
+	// lines = filterLines(pj, lines)
+	// for _, line := range lines {
+	// 	clearVerticalRuns(img, line)
+	// 	line = adjustLineEndpoints(line)
+	// 	line := line.ToPolyline(false).Simplify(0.01)
+	// 	addLine(line)
+	// }
+
+	// Third pass: find diagonals up to 45 degrees off vertical
+	pj := NewPointJoiner(10, img.Width, 1)
+	pj.MinAspectRatio = 1.6
 	FindHorizontalRuns(img, pj)
 	lines := pj.JoinerLines()
+	// Remove the first few and last few points; on the diagonals, these are sus.
+	//lines = trimLines(lines)
 	lines = filterLines(pj, lines)
 	for _, line := range lines {
 		clearHorizontalRuns(img, line)
 		line = adjustLineEndpoints(line)
 		line := line.ToPolyline(true).Simplify(0.01)
-		addLine(line)
-	}
-
-	// Second pass: find perfectly horizontal lines
-	pj = NewPointJoiner(10, img.Height, 0)
-	FindVerticalRuns(img, pj)
-	lines = pj.JoinerLines()
-	lines = filterLines(pj, lines)
-	for _, line := range lines {
-		clearVerticalRuns(img, line)
-		line = adjustLineEndpoints(line)
-		line := line.ToPolyline(false).Simplify(0.01)
-		addLine(line)
-	}
-
-	// Third pass: find diagonals up to 45 degrees off vertical
-	pj = NewPointJoiner(10, img.Width, 1)
-	pj.MinAspectRatio = 2.0
-	FindHorizontalRuns(img, pj)
-	lines = pj.JoinerLines()
-	// Remove the first few and last few points; on the diagonals, these are sus.
-	lines = trimLines(lines)
-	lines = filterLines(pj, lines)
-	for _, line := range lines {
-		clearHorizontalRuns(img, line)
-		line = adjustLineEndpoints(line)
-		line := line.ToPolyline(true).Simplify(0.9)
 		addLine(line)
 	}
 
@@ -331,7 +333,7 @@ func Vectorize(img *ColorImage) string {
 	for _, line := range lines {
 		clearVerticalRuns(img, line)
 		line = adjustLineEndpoints(line)
-		line := line.ToPolyline(false).Simplify(0.9)
+		line := line.ToPolyline(false).Simplify(0.01)
 		addLine(line)
 	}
 
@@ -378,6 +380,17 @@ func checkReportRun(major, minor, runStart int, runHandler RunHandler) {
 	}
 }
 
+func colorOk(c color.Color) bool {
+	switch c {
+	case color.Black:
+		return true
+	case color.Blue, color.Gray, color.Green, color.Red:
+		return false
+	default:
+		return false
+	}
+}
+
 func FindHorizontalRuns(img *ColorImage, runHandler RunHandler) {
 	// To start with, just look for white and black pixels.
 	// This will of course need to be expanded to other colors, which could be done
@@ -389,7 +402,7 @@ func FindHorizontalRuns(img *ColorImage, runHandler RunHandler) {
 		for x := 0; x < img.Width; x++ {
 			c := img.Data[i]
 			i++
-			if c == color.Black {
+			if colorOk(c) {
 				if runStart == -1 {
 					// new run
 					runStart = x
@@ -415,7 +428,7 @@ func FindVerticalRuns(img *ColorImage, runHandler RunHandler) {
 		runStart := -1
 		for y := 0; y < img.Height; y++ {
 			c := img.Data[x+y*img.Width]
-			if c == color.Black {
+			if colorOk(c) {
 				if runStart == -1 {
 					// new run
 					runStart = y

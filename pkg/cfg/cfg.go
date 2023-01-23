@@ -12,7 +12,7 @@ var UndashMaxDist = 4.0
 var UndashMinDist = 0.5
 var UndashMaxAngle = 45.0
 
-var VectorizeMinLinePixelLength = 5
+var VectorizeMinLinePixelLength = 3
 
 var BackgroundColor = color.White
 
