@@ -123,6 +123,44 @@ func (p Point) DistanceToCircle(c Circle) float64 {
 	return math.Abs(math.Sqrt((p.X-c.Center.X)*(p.X-c.Center.X)+(p.Y-c.Center.Y)*(p.Y-c.Center.Y)) - c.Radius)
 }
 
+func (line Polyline) EndpointDistance(p Point) float64 {
+	if len(line) == 0 {
+		return math.NaN()
+	}
+	d := line[0].Distance(p)
+	if len(line) > 1 {
+		d = math.Min(d, line[len(line)-1].Distance(p))
+	}
+	return d
+}
+
+func (line Polyline) ConnectTo(other Polyline) Polyline {
+	if len(line) == 0 || len(other) == 0 {
+		return nil
+	}
+	c1 := Polyline{line[0]}
+	if len(line) > 1 {
+		c1 = append(c1, line[len(line)-1])
+	}
+	c2 := Polyline{other[0]}
+	if len(other) > 1 {
+		c2 = append(c2, other[len(other)-1])
+	}
+
+	var connector Polyline
+	dist := math.Inf(1)
+	for _, p1 := range c1 {
+		for _, p2 := range c2 {
+			d := p1.Distance(p2)
+			if d < dist {
+				dist = d
+				connector = Polyline{p1, p2}
+			}
+		}
+	}
+	return connector
+}
+
 // Simplify simplifies the polyline using the Douglas-Peucker algorithm
 // and returns the simplified curve as a mix of line segments and circular arcs.
 func (points Polyline) Simplify(epsilon float64) Polyline {

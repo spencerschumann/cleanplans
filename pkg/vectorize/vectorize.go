@@ -99,11 +99,6 @@ type RunHandler interface {
 // be better to do away with this when adding the code to join line segments to eliminate
 // gaps.
 func adjustLineEndpoints(line JoinerLine) JoinerLine {
-	// Actually, let's just try trimming it down - the first and last points are dubious.
-	/*if len(line) > 4 {
-		return line[1 : len(line)-2]
-	}*/
-
 	last := len(line) - 1
 	for i := 1; i < last; i++ {
 		line[i].Minor += 0.5
@@ -199,7 +194,7 @@ func trimLines(lines []JoinerLine) []JoinerLine {
 		avgWidth := totalWidth / float64(len(line))
 
 		// Trim avgWidth segments off the beginning and end of the line; if there's nothing left, remove it completely.
-		trim := int(avgWidth*1.0 + 0.5)
+		trim := int(avgWidth + 0.5)
 		if trim == 0 {
 			trim = 1
 		}
@@ -211,48 +206,25 @@ func trimLines(lines []JoinerLine) []JoinerLine {
 }
 
 func Vectorize(img *ColorImage) string {
+	connectorPathNode := cleaner.SVGXMLNode{
+		XMLName:  xml.Name{Local: "path"},
+		Styles:   "fill:none;stroke:#aa0000;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+		Category: cleaner.CategoryFullCut,
+	}
 	runPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
 		Styles:   "fill:none;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
-	//verticalRunPathNode := &horizontalRunPathNode
-	/*verticalRunPathNode := cleaner.SVGXMLNode{
-		XMLName:  xml.Name{Local: "path"},
-		Styles:   "fill:none;stroke:#0000cc;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
-		Category: cleaner.CategoryFullCut,
-	}*/
 	svg := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "svg"},
-		Children: []*cleaner.SVGXMLNode{&runPathNode /*&verticalRunPathNode*/},
+		Children: []*cleaner.SVGXMLNode{&connectorPathNode, &runPathNode /*&verticalRunPathNode*/},
 
 		// Note: not using a unit specifier here for display, to match up with the png image. For
 		// the final output SVG (if that is the format I go with), these will need to be mapped to mm.
 		Width:  strconv.Itoa(img.Width),
 		Height: strconv.Itoa(img.Height),
 	}
-
-	/*pj := NewAlternateJoiner(10, img.Width)
-	start := time.Now()
-	FindHorizontalRuns(img, pj)
-	fhrTime := time.Now()
-	fmt.Println("*** Time for FindHorizontalRuns():", fhrTime.Sub(start))
-	lines := pj.Lines()
-	fmt.Println("*** Time for Lines():", time.Since(fhrTime))
-	for _, line := range lines {
-		path := svgpath.SubPath{
-			X: line[0].X,
-			Y: line[0].Y,
-		}
-		for _, point := range line[1:] {
-			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
-				Command: svgpath.LineTo,
-				X:       point.X,
-				Y:       point.Y,
-			})
-		}
-		horizontalRunPathNode.Path = append(horizontalRunPathNode.Path, &path)
-	}*/
 
 	addPoint := func(x, y float64) {
 		svg.Children = append(svg.Children, &cleaner.SVGXMLNode{
@@ -264,7 +236,9 @@ func Vectorize(img *ColorImage) string {
 		})
 	}
 
-	addLine := func(line geometry.Polyline) {
+	lineSet := NewLineSet(float64(img.Width), float64(img.Height))
+
+	addLineTo := func(line geometry.Polyline, node *cleaner.SVGXMLNode) {
 		path := svgpath.SubPath{
 			X: line[0].X,
 			Y: line[0].Y,
@@ -278,42 +252,23 @@ func Vectorize(img *ColorImage) string {
 			})
 			addPoint(point.X, point.Y)
 		}
-		runPathNode.Path = append(runPathNode.Path, &path)
+		node.Path = append(node.Path, &path)
+	}
+	allLines := []geometry.Polyline{}
+	addLine := func(line geometry.Polyline) {
+		allLines = append(allLines, line)
+		lineSet.AddLine(line)
+		addLineTo(line, &runPathNode)
+	}
+	addConnector := func(line geometry.Polyline) {
+		addLineTo(line, &connectorPathNode)
 	}
 
-	// // First pass: find perfectly vertical lines
-	// pj := NewPointJoiner(10, img.Width, 0)
-	// pj.MinAspectRatio = 2
-	// FindHorizontalRuns(img, pj)
-	// lines := pj.JoinerLines()
-	// lines = filterLines(pj, lines)
-	// for _, line := range lines {
-	// 	clearHorizontalRuns(img, line)
-	// 	line = adjustLineEndpoints(line)
-	// 	line := line.ToPolyline(true).Simplify(0.01)
-	// 	addLine(line)
-	// }
-
-	// // Second pass: find perfectly horizontal lines
-	// pj = NewPointJoiner(10, img.Height, 0)
-	// pj.MinAspectRatio = 2
-	// FindVerticalRuns(img, pj)
-	// lines = pj.JoinerLines()
-	// lines = filterLines(pj, lines)
-	// for _, line := range lines {
-	// 	clearVerticalRuns(img, line)
-	// 	line = adjustLineEndpoints(line)
-	// 	line := line.ToPolyline(false).Simplify(0.01)
-	// 	addLine(line)
-	// }
-
-	// Third pass: find diagonals up to 45 degrees off vertical
+	// First pass: find lines up to 45 degrees off vertical
 	pj := NewPointJoiner(10, img.Width, 1)
 	pj.MinAspectRatio = 1.6
 	FindHorizontalRuns(img, pj)
 	lines := pj.JoinerLines()
-	// Remove the first few and last few points; on the diagonals, these are sus.
-	//lines = trimLines(lines)
 	lines = filterLines(pj, lines)
 	for _, line := range lines {
 		clearHorizontalRuns(img, line)
@@ -322,12 +277,12 @@ func Vectorize(img *ColorImage) string {
 		addLine(line)
 	}
 
-	// Fourth pass: find remaining diagonals
+	// Second pass: find horizontal lines and remaining diagonals
 	pj = NewPointJoiner(10, img.Height, 2)
 	pj.MinAspectRatio = 1.3
 	FindVerticalRuns(img, pj)
 	lines = pj.JoinerLines()
-	// Remove the first few and last few points; on the diagonals, these are sus.
+	// Remove the first few and last few points; on the second pass of diagonals, these are sus.
 	lines = trimLines(lines)
 	lines = filterLines(pj, lines)
 	for _, line := range lines {
@@ -337,29 +292,26 @@ func Vectorize(img *ColorImage) string {
 		addLine(line)
 	}
 
-	/*
-		// Make this second pass more lenient than the first
-		pj = NewPointJoiner(10, img.Height, 2)
-		//fmt.Println("\n******** Find Vertical Runs")
-		FindVerticalRuns(img, pj)
-		lines = pj.JoinerLines()
-		//lines = filterLines(lines)
-		for _, line := range lines {
-			line = adjustLineEndpoints(line)
-			line := line.ToPolyline(false).Simplify(1.4)
-			path := svgpath.SubPath{
-				X: line[0].X,
-				Y: line[0].Y,
+	// Now, add connectors
+	{
+		for _, line := range allLines {
+			endpoints := []geometry.Point{line[0], line[len(line)-1]}
+			for _, p := range endpoints {
+				others := lineSet.FindNeighbors(p, 30) // TODO: parameterize
+				for _, other := range others {
+					if len(other) == len(line) && other[0] == line[0] && other[len(other)-1] == line[len(line)-1] {
+						continue
+					}
+					// Just greedily connect to the nearest neighbor for now
+					c := line.ConnectTo(other)
+					//fmt.Println("Connector:", c)
+					addConnector(c)
+					break
+				}
 			}
-			for _, point := range line[1:] {
-				path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
-					Command: svgpath.LineTo,
-					X:       point.X,
-					Y:       point.Y,
-				})
-			}
-			verticalRunPathNode.Path = append(verticalRunPathNode.Path, &path)
-		}*/
+			// TODO: this is going to double the connections, due to bi-directional connecting. Ignore for this first pass.
+		}
+	}
 
 	//cleaner.Simplify(&svg)
 
