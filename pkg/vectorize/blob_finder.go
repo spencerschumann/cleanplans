@@ -1,5 +1,10 @@
 package vectorize
 
+import (
+	"cleanplans/pkg/geometry"
+	"math"
+)
+
 // Run is a horizontal set of adjacent, same-colored pixels.
 type Run struct {
 	X1 float64
@@ -30,6 +35,46 @@ type Blob []Run
 	}
 	return polyline
 }*/
+
+func (b Blob) ToPolyline() geometry.Polyline {
+	// use linear regression to find the best-fit line to the blob
+	n := 0.0
+	sumX := 0.0
+	sumY := 0.0
+	sumXX := 0.0
+	sumXY := 0.0
+	minX := math.Inf(+1)
+	maxX := math.Inf(-1)
+	for _, run := range b {
+		width := run.X2 - run.X1
+		n += width
+		sumY += width * (run.Y + 0.5)
+		sx := width * (run.X1 + run.X2) / 2
+		sumX += sx
+		sumXY += sx * (run.Y + 0.5)
+		sumXX += width*run.X1*run.X1 + run.X1*width*width + width*width*width/3
+		minX = math.Min(minX, run.X1)
+		maxX = math.Max(maxX, run.X2)
+	}
+	// TODO: handle vertical and near-vertical - should switch to Y as the independent variable
+	betaDenominator := n*sumXX - sumX*sumX
+	if betaDenominator == 0 {
+		return geometry.Polyline{}
+	}
+	beta := (n*sumXY - sumX*sumY) / betaDenominator
+	alpha := sumY/n - beta*sumX/n
+
+	if beta < 0.5 {
+		// mostly horizontal - go from minX to maxX
+		return geometry.Polyline{
+			{X: minX, Y: alpha + beta*minX},
+			{X: maxX, Y: alpha + beta*maxX},
+		}
+	}
+
+	// todo: handle mostly vertical case
+	return geometry.Polyline{}
+}
 
 type BlobFinder struct {
 	y          int
@@ -94,7 +139,6 @@ func (bf *BlobFinder) runBuckets(run Run) (int, int) {
 	return first, last
 }
 
-// TODO: after switching from "point joiner" to "blob finder", it may be better to represent runs by their first x coordinate rather than the midpoint.
 func (bf *BlobFinder) AddRun(x1, x2 float64) {
 	run := Run{X1: x1, X2: x2, Y: float64(bf.y)}
 	firstBucketIdx, lastBucketIdx := bf.runBuckets(run)
@@ -132,7 +176,7 @@ func (bf *BlobFinder) AddRun(x1, x2 float64) {
 					bf.buckets[j][key] = blob
 				}
 
-				// For remaining buckets covered by both or neither, no change is needed.
+				// For remaining buckets covered by both or neither runs, no change is needed.
 			}
 			return
 		}
@@ -150,7 +194,8 @@ func (pj *BlobFinder) Blobs() []Blob {
 	pj.NextY()
 	pj.NextY()
 
-	return pj.blobs
+	// Further calls to NextY or AddRun are undefined.
+	pj.buckets = nil
 
-	// Note: should prevent any further calls to NextMinor() or AddPoint()
+	return pj.blobs
 }

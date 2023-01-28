@@ -200,19 +200,19 @@ func reverse[T any](input []T) {
 }
 
 func Vectorize(img *ColorImage) string {
-	connectorPathNode := cleaner.SVGXMLNode{
+	linePathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
-		Styles:   "fill:#000000;fill-opacity:0.8;stroke:#aa0000;stroke-width:.2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
+		Styles:   "fill:none;stroke:#aa0000;stroke-width:.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
-	runPathNode := cleaner.SVGXMLNode{
+	blobPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
 		Styles:   "fill:#000000;fill-opacity:0.5;stroke:#ee0000;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
 	svg := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "svg"},
-		Children: []*cleaner.SVGXMLNode{&connectorPathNode, &runPathNode /*&verticalRunPathNode*/},
+		Children: []*cleaner.SVGXMLNode{&linePathNode, &blobPathNode /*&verticalRunPathNode*/},
 
 		// Note: not using a unit specifier here for display, to match up with the png image. For
 		// the final output SVG (if that is the format I go with), these will need to be mapped to mm.
@@ -233,6 +233,9 @@ func Vectorize(img *ColorImage) string {
 	//lineSet := NewLineSet(float64(img.Width), float64(img.Height))
 
 	addLineTo := func(line geometry.Polyline, node *cleaner.SVGXMLNode) {
+		if len(line) < 2 {
+			return
+		}
 		path := svgpath.SubPath{
 			X: line[0].X,
 			Y: line[0].Y,
@@ -248,12 +251,12 @@ func Vectorize(img *ColorImage) string {
 		}
 		node.Path = append(node.Path, &path)
 	}
-	addLine := func(line geometry.Polyline) {
-		addLineTo(line, &runPathNode)
+	addBlobOutline := func(line geometry.Polyline) {
+		addLineTo(line, &blobPathNode)
 	}
-	/*addConnector := func(line geometry.Polyline) {
-		addLineTo(line, &connectorPathNode)
-	}*/
+	addLine := func(line geometry.Polyline) {
+		addLineTo(line, &linePathNode)
+	}
 
 	// First pass: find lines up to 45 degrees off vertical
 	bf := NewBlobFinder(10, img.Width)
@@ -296,7 +299,8 @@ func Vectorize(img *ColorImage) string {
 		line = append(line, right...)
 		// Close the loop
 		line = append(line, line[0])
-		addLine(line)
+		addBlobOutline(line)
+		addLine(blob.ToPolyline())
 	}
 
 	data, err := svg.Marshal()
