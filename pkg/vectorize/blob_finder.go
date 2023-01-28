@@ -1,40 +1,35 @@
 package vectorize
 
-import (
-	"cleanplans/pkg/geometry"
-	"math"
-)
-
 // Run is a horizontal set of adjacent, same-colored pixels.
 type Run struct {
-	X     float32
-	Y     float32
-	Width int
+	X1 float64
+	X2 float64
+	Y  float64
 }
 
 // Blob is a sequence of adjacent runs. Runs are adjacent
 // if the Y values differ by exactly 1, and the X values differ by at most 1.
 type Blob []Run
 
-func (b Blob) ToPolyline(xMajor bool) geometry.Polyline {
+/*func (b Blob) ToPolyline(xMajor bool) geometry.Polyline {
 	var polyline geometry.Polyline
 	if xMajor {
 		for _, p := range b {
 			polyline = append(polyline, geometry.Point{
-				X: float64(p.X),
-				Y: float64(p.Y),
+				X: p.X,
+				Y: p.Y,
 			})
 		}
 	} else {
 		for _, p := range b {
 			polyline = append(polyline, geometry.Point{
-				X: float64(p.Y),
-				Y: float64(p.X),
+				X: p.Y,
+				Y: p.X,
 			})
 		}
 	}
 	return polyline
-}
+}*/
 
 type BlobFinder struct {
 	y          int
@@ -81,20 +76,13 @@ func (bf *BlobFinder) NextY() {
 
 // overlap returns true if the two runs overlap, including diagonally
 func (r Run) overlap(other Run) bool {
-	return math.Abs(float64(r.X-other.X)) <= float64(r.Width+other.Width)/2
+	return r.X1 <= other.X2 && other.X1 <= r.X2
 }
 
-func (bf *BlobFinder) runBuckets(x float32, width int) (int, int) {
-	// Convert x & width to run endpoints
-	x1 := x - float32(width)/2
-	x2 := x + float32(width)/2
-
+func (bf *BlobFinder) runBuckets(run Run) (int, int) {
 	// diagonally adjacent runs are treated as connected, so extend the x values by 1 to compensate.
-	x1++
-	x2--
-
-	first := int(x1) / bf.bucketSize
-	last := int(x2) / bf.bucketSize
+	first := int(run.X1-1) / bf.bucketSize
+	last := int(run.X2+1) / bf.bucketSize
 
 	if first < 0 {
 		first = 0
@@ -107,9 +95,9 @@ func (bf *BlobFinder) runBuckets(x float32, width int) (int, int) {
 }
 
 // TODO: after switching from "point joiner" to "blob finder", it may be better to represent runs by their first x coordinate rather than the midpoint.
-func (bf *BlobFinder) AddRun(x float32, width int) {
-	run := Run{X: x, Y: float32(bf.y), Width: width}
-	firstBucketIdx, lastBucketIdx := bf.runBuckets(x, width)
+func (bf *BlobFinder) AddRun(x1, x2 float64) {
+	run := Run{X1: x1, X2: x2, Y: float64(bf.y)}
+	firstBucketIdx, lastBucketIdx := bf.runBuckets(run)
 	for i := firstBucketIdx; i <= lastBucketIdx; i++ {
 		// Check if the run can be added to any of the existing blobs in the bucket
 		for key, blob := range bf.buckets[i] {
@@ -120,7 +108,7 @@ func (bf *BlobFinder) AddRun(x float32, width int) {
 
 			*blob = append(*blob, run)
 
-			prevFirst, prevLast := bf.runBuckets(prevRun.X, prevRun.Width)
+			prevFirst, prevLast := bf.runBuckets(prevRun)
 
 			start := firstBucketIdx
 			if prevFirst < start {

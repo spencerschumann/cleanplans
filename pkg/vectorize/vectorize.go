@@ -1,7 +1,6 @@
 package vectorize
 
 import (
-	"cleanplans/pkg/cfg"
 	"cleanplans/pkg/cleaner"
 	"cleanplans/pkg/color"
 	"cleanplans/pkg/geometry"
@@ -10,7 +9,6 @@ import (
 	"fmt"
 	"image"
 	imgcolor "image/color"
-	"math"
 	"strconv"
 )
 
@@ -91,7 +89,7 @@ func PDFJSImageToColorImage(image []byte, width, height, bitsPerPixel int) *Colo
 }
 
 type RunHandler interface {
-	AddRun(x float32, width int)
+	AddRun(x1, x2 float64)
 	NextY()
 }
 
@@ -107,17 +105,15 @@ func adjustLineEndpoints(line Blob) Blob {
 	return line
 }
 
-func clearHorizontalRuns(img *ColorImage, line Blob) {
-	for _, pt := range line {
-		xStart := int(pt.X - float32(pt.Width)/2)
-		xEnd := xStart + pt.Width
-		for x := xStart; x < xEnd; x++ {
-			img.Data[x+int(pt.Y)*img.Width] = color.LightGray
+func clearHorizontalRuns(img *ColorImage, blob Blob) {
+	for _, run := range blob {
+		for x := int(run.X1); x < int(run.X2); x++ {
+			img.Data[x+int(run.Y)*img.Width] = color.LightGray
 		}
 	}
 }
 
-func filterLines(pj *BlobFinder, lines []Blob) []Blob {
+/*func filterLines(pj *BlobFinder, lines []Blob) []Blob {
 	var output []Blob
 	for _, line := range lines {
 		output = append(output, filterLine(pj, line)...)
@@ -191,17 +187,27 @@ func trimLines(lines []Blob) []Blob {
 		}
 	}
 	return result
+}*/
+
+func reverse[T any](input []T) {
+	inputLen := len(input)
+	inputMid := inputLen / 2
+
+	for i := 0; i < inputMid; i++ {
+		j := inputLen - i - 1
+		input[i], input[j] = input[j], input[i]
+	}
 }
 
 func Vectorize(img *ColorImage) string {
 	connectorPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
-		Styles:   "fill:none;stroke:#aa0000;stroke-width:.5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+		Styles:   "fill:#000000;fill-opacity:0.8;stroke:#aa0000;stroke-width:.2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
 	runPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
-		Styles:   "fill:none;stroke:#000000;stroke-width:.5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+		Styles:   "fill:#000000;fill-opacity:0.5;stroke:#ee0000;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
 	svg := cleaner.SVGXMLNode{
@@ -219,13 +225,12 @@ func Vectorize(img *ColorImage) string {
 			XMLName: xml.Name{Local: "circle"},
 			CX:      x,
 			CY:      y,
-			Radius:  0.3,
+			Radius:  0.09,
 			Styles:  "fill:#00ff00",
 		})
-	}
+	}*/
 
-	lineSet := NewLineSet(float64(img.Width), float64(img.Height))
-	*/
+	//lineSet := NewLineSet(float64(img.Width), float64(img.Height))
 
 	addLineTo := func(line geometry.Polyline, node *cleaner.SVGXMLNode) {
 		path := svgpath.SubPath{
@@ -246,9 +251,9 @@ func Vectorize(img *ColorImage) string {
 	addLine := func(line geometry.Polyline) {
 		addLineTo(line, &runPathNode)
 	}
-	addConnector := func(line geometry.Polyline) {
+	/*addConnector := func(line geometry.Polyline) {
 		addLineTo(line, &connectorPathNode)
-	}
+	}*/
 
 	// First pass: find lines up to 45 degrees off vertical
 	bf := NewBlobFinder(10, img.Width)
@@ -260,25 +265,38 @@ func Vectorize(img *ColorImage) string {
 		// But it's still useful for testing, to gray out the detected blobs.
 		clearHorizontalRuns(img, blob)
 
-		for i, run := range blob {
-			if i > 0 {
-				prevRun := blob[i-1]
-				x := math.Max(float64(prevRun.X)-float64(prevRun.Width)/2, float64(run.X)-float64(run.Width)/2)
-				addConnector(geometry.Polyline{
-					{X: x, Y: float64(prevRun.Y) + 0.5},
-					{X: x, Y: float64(run.Y) + 0.5},
-				})
-				x = math.Min(float64(prevRun.X)+float64(prevRun.Width)/2, float64(run.X)+float64(run.Width)/2)
-				addConnector(geometry.Polyline{
-					{X: x, Y: float64(prevRun.Y) + 0.5},
-					{X: x, Y: float64(run.Y) + 0.5},
-				})
+		margin := 0.2
+		x1, x2 := blob[0].X1, blob[0].X2
+		left := geometry.Polyline{{X: x1 + margin, Y: blob[0].Y + margin}}
+		right := geometry.Polyline{{X: x2 - margin, Y: blob[0].Y + margin}}
+		lastRun := blob[0]
+		for _, run := range blob[1:] {
+			if run.X1 < x1 {
+				left = append(left, geometry.Point{X: x1 + margin, Y: run.Y + margin})
+				left = append(left, geometry.Point{X: run.X1 + margin, Y: run.Y + margin})
+			} else if x1 < run.X1 {
+				left = append(left, geometry.Point{X: x1 + margin, Y: lastRun.Y + 1 - margin})
+				left = append(left, geometry.Point{X: run.X1 + margin, Y: lastRun.Y + 1 - margin})
 			}
-			addLine(geometry.Polyline{
-				{X: float64(run.X) - float64(run.Width)/2, Y: float64(run.Y) + 0.5},
-				{X: float64(run.X) + float64(run.Width)/2, Y: float64(run.Y) + 0.5},
-			})
+			if run.X2 < x2 {
+				right = append(right, geometry.Point{X: x2 - margin, Y: lastRun.Y + 1 - margin})
+				right = append(right, geometry.Point{X: run.X2 - margin, Y: lastRun.Y + 1 - margin})
+			} else if x2 < run.X2 {
+				right = append(right, geometry.Point{X: x2 - margin, Y: run.Y + margin})
+				right = append(right, geometry.Point{X: run.X2 - margin, Y: run.Y + margin})
+			}
+			x1 = run.X1
+			x2 = run.X2
+			lastRun = run
 		}
+		left = append(left, geometry.Point{X: lastRun.X1 + margin, Y: lastRun.Y + 1 - margin})
+		right = append(right, geometry.Point{X: lastRun.X2 - margin, Y: lastRun.Y + 1 - margin})
+		line := geometry.Polyline(left)
+		reverse(right)
+		line = append(line, right...)
+		// Close the loop
+		line = append(line, line[0])
+		addLine(line)
 	}
 
 	data, err := svg.Marshal()
@@ -288,13 +306,13 @@ func Vectorize(img *ColorImage) string {
 	return string(data)
 }
 
-func checkReportRun(major, minor, runStart int, runHandler RunHandler) {
+func checkReportRun(x, y, runStart int, runHandler RunHandler) {
 	if runStart < 0 {
 		return
 	}
-	runLength := major - runStart
+	//runLength := x - runStart
 	//if runLength <= cfg.VectorizeMaxRunLength {
-	runHandler.AddRun(float32(major+runStart)/2, runLength)
+	runHandler.AddRun(float64(runStart), float64(x))
 	//}
 }
 
