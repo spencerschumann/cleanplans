@@ -21,12 +21,12 @@ type ColorImage struct {
 	Data   []color.Color
 }
 
-type Point struct {
+/*type Point struct {
 	X float32
 	Y float32
 }
 
-type Line []Point
+type Line []Point*/
 
 func (ci *ColorImage) ColorModel() imgcolor.Model {
 	return color.Palette
@@ -91,51 +91,41 @@ func PDFJSImageToColorImage(image []byte, width, height, bitsPerPixel int) *Colo
 }
 
 type RunHandler interface {
-	AddRun(major float32, width int)
-	NextMinor()
+	AddRun(x float32, width int)
+	NextY()
 }
 
 // This helps close gaps, but it also doesn't take into consideration line slope. It may
 // be better to do away with this when adding the code to join line segments to eliminate
 // gaps.
-func adjustLineEndpoints(line JoinerLine) JoinerLine {
+func adjustLineEndpoints(line Blob) Blob {
 	last := len(line) - 1
 	for i := 1; i < last; i++ {
-		line[i].Minor += 0.5
+		line[i].Y += 0.5
 	}
-	line[last].Minor += 1
+	line[last].Y += 1
 	return line
 }
 
-func clearHorizontalRuns(img *ColorImage, line JoinerLine) {
+func clearHorizontalRuns(img *ColorImage, line Blob) {
 	for _, pt := range line {
-		xStart := int(pt.Major - float32(pt.Width)/2)
+		xStart := int(pt.X - float32(pt.Width)/2)
 		xEnd := xStart + pt.Width
 		for x := xStart; x < xEnd; x++ {
-			img.Data[x+int(pt.Minor)*img.Width] = color.LightGray
+			img.Data[x+int(pt.Y)*img.Width] = color.LightGray
 		}
 	}
 }
 
-func clearVerticalRuns(img *ColorImage, line JoinerLine) {
-	for _, pt := range line {
-		yStart := int(pt.Major - float32(pt.Width)/2)
-		yEnd := yStart + pt.Width
-		for y := yStart; y < yEnd; y++ {
-			img.Data[int(pt.Minor)+y*img.Width] = color.LightGray
-		}
-	}
-}
-
-func filterLines(pj *PointJoiner, lines []JoinerLine) []JoinerLine {
-	var output []JoinerLine
+func filterLines(pj *BlobFinder, lines []Blob) []Blob {
+	var output []Blob
 	for _, line := range lines {
 		output = append(output, filterLine(pj, line)...)
 	}
 	return output
 }
 
-func filterLine(pj *PointJoiner, line JoinerLine) []JoinerLine {
+func filterLine(pj *BlobFinder, line Blob) []Blob {
 	// Find median width
 	counts := make([]int, cfg.VectorizeMaxRunLength+1)
 	for _, pt := range line {
@@ -157,16 +147,14 @@ func filterLine(pj *PointJoiner, line JoinerLine) []JoinerLine {
 	}
 
 	bestRunStart := -1
-	var lines []JoinerLine
+	var lines []Blob
 	checkReportRun := func(i int) {
 		if bestRunStart < 0 {
 			return
 		}
 		// TODO: may want to further trim the beginning and end of the subline with more strict requirements
 		subLine := line[bestRunStart:i]
-		if pj.IsLineAdmissable(subLine) {
-			lines = append(lines, subLine)
-		}
+		lines = append(lines, subLine)
 		bestRunStart = -1
 	}
 
@@ -184,8 +172,8 @@ func filterLine(pj *PointJoiner, line JoinerLine) []JoinerLine {
 	return lines
 }
 
-func trimLines(lines []JoinerLine) []JoinerLine {
-	var result []JoinerLine
+func trimLines(lines []Blob) []Blob {
+	var result []Blob
 	for _, line := range lines {
 		totalWidth := 0.0
 		for _, pt := range line {
@@ -208,12 +196,12 @@ func trimLines(lines []JoinerLine) []JoinerLine {
 func Vectorize(img *ColorImage) string {
 	connectorPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
-		Styles:   "fill:none;stroke:#aa0000;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+		Styles:   "fill:none;stroke:#aa0000;stroke-width:.5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
 	runPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
-		Styles:   "fill:none;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
+		Styles:   "fill:none;stroke:#000000;stroke-width:.5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
 	svg := cleaner.SVGXMLNode{
@@ -226,7 +214,7 @@ func Vectorize(img *ColorImage) string {
 		Height: strconv.Itoa(img.Height),
 	}
 
-	addPoint := func(x, y float64) {
+	/*addPoint := func(x, y float64) {
 		svg.Children = append(svg.Children, &cleaner.SVGXMLNode{
 			XMLName: xml.Name{Local: "circle"},
 			CX:      x,
@@ -237,27 +225,25 @@ func Vectorize(img *ColorImage) string {
 	}
 
 	lineSet := NewLineSet(float64(img.Width), float64(img.Height))
+	*/
 
 	addLineTo := func(line geometry.Polyline, node *cleaner.SVGXMLNode) {
 		path := svgpath.SubPath{
 			X: line[0].X,
 			Y: line[0].Y,
 		}
-		addPoint(line[0].X, line[0].Y)
+		//addPoint(line[0].X, line[0].Y)
 		for _, point := range line[1:] {
 			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
 				Command: svgpath.LineTo,
 				X:       point.X,
 				Y:       point.Y,
 			})
-			addPoint(point.X, point.Y)
+			//addPoint(point.X, point.Y)
 		}
 		node.Path = append(node.Path, &path)
 	}
-	allLines := []geometry.Polyline{}
 	addLine := func(line geometry.Polyline) {
-		allLines = append(allLines, line)
-		lineSet.AddLine(line)
 		addLineTo(line, &runPathNode)
 	}
 	addConnector := func(line geometry.Polyline) {
@@ -265,55 +251,35 @@ func Vectorize(img *ColorImage) string {
 	}
 
 	// First pass: find lines up to 45 degrees off vertical
-	pj := NewPointJoiner(10, img.Width, 1)
-	pj.MinAspectRatio = 1.6
-	FindHorizontalRuns(img, pj)
-	lines := pj.JoinerLines()
-	lines = filterLines(pj, lines)
-	for _, line := range lines {
-		clearHorizontalRuns(img, line)
-		line = adjustLineEndpoints(line)
-		line := line.ToPolyline(true).Simplify(0.01)
-		addLine(line)
-	}
+	bf := NewBlobFinder(10, img.Width)
+	FindHorizontalRuns(img, bf)
+	blobs := bf.Blobs()
+	//lines = filterLines(bf, lines)
+	for _, blob := range blobs {
+		// Note: won't even need this, since all pixels will be accounted for as blobs.
+		// But it's still useful for testing, to gray out the detected blobs.
+		clearHorizontalRuns(img, blob)
 
-	// Second pass: find horizontal lines and remaining diagonals
-	pj = NewPointJoiner(10, img.Height, 2)
-	pj.MinAspectRatio = 1.3
-	FindVerticalRuns(img, pj)
-	lines = pj.JoinerLines()
-	// Remove the first few and last few points; on the second pass of diagonals, these are sus.
-	lines = trimLines(lines)
-	lines = filterLines(pj, lines)
-	for _, line := range lines {
-		clearVerticalRuns(img, line)
-		line = adjustLineEndpoints(line)
-		line := line.ToPolyline(false).Simplify(0.01)
-		addLine(line)
-	}
-
-	// Now, add connectors
-	{
-		for _, line := range allLines {
-			endpoints := []geometry.Point{line[0], line[len(line)-1]}
-			for _, p := range endpoints {
-				others := lineSet.FindNeighbors(p, 30) // TODO: parameterize
-				for _, other := range others {
-					if len(other) == len(line) && other[0] == line[0] && other[len(other)-1] == line[len(line)-1] {
-						continue
-					}
-					// Just greedily connect to the nearest neighbor for now
-					c := line.ConnectTo(other)
-					//fmt.Println("Connector:", c)
-					addConnector(c)
-					break
-				}
+		for i, run := range blob {
+			if i > 0 {
+				prevRun := blob[i-1]
+				x := math.Max(float64(prevRun.X)-float64(prevRun.Width)/2, float64(run.X)-float64(run.Width)/2)
+				addConnector(geometry.Polyline{
+					{X: x, Y: float64(prevRun.Y) + 0.5},
+					{X: x, Y: float64(run.Y) + 0.5},
+				})
+				x = math.Min(float64(prevRun.X)+float64(prevRun.Width)/2, float64(run.X)+float64(run.Width)/2)
+				addConnector(geometry.Polyline{
+					{X: x, Y: float64(prevRun.Y) + 0.5},
+					{X: x, Y: float64(run.Y) + 0.5},
+				})
 			}
-			// TODO: this is going to double the connections, due to bi-directional connecting. Ignore for this first pass.
+			addLine(geometry.Polyline{
+				{X: float64(run.X) - float64(run.Width)/2, Y: float64(run.Y) + 0.5},
+				{X: float64(run.X) + float64(run.Width)/2, Y: float64(run.Y) + 0.5},
+			})
 		}
 	}
-
-	//cleaner.Simplify(&svg)
 
 	data, err := svg.Marshal()
 	if err != nil {
@@ -327,9 +293,9 @@ func checkReportRun(major, minor, runStart int, runHandler RunHandler) {
 		return
 	}
 	runLength := major - runStart
-	if runLength <= cfg.VectorizeMaxRunLength {
-		runHandler.AddRun(float32(major+runStart)/2, runLength)
-	}
+	//if runLength <= cfg.VectorizeMaxRunLength {
+	runHandler.AddRun(float32(major+runStart)/2, runLength)
+	//}
 }
 
 func colorOk(c color.Color) bool {
@@ -367,32 +333,6 @@ func FindHorizontalRuns(img *ColorImage, runHandler RunHandler) {
 		}
 		// check for finished run at end of row
 		checkReportRun(img.Width, y, runStart, runHandler)
-		runHandler.NextMinor()
-	}
-}
-
-func FindVerticalRuns(img *ColorImage, runHandler RunHandler) {
-	// Note: although it's possible to combine the implementations of this functinon and
-	// FindHorizontalRuns, the result would be significantly more complex due to the number
-	// of differences. Also this is one of the most performance critical loops in this
-	// project, and making the implementation more general would most likely reduce performance.
-	for x := 0; x < img.Width; x++ {
-		runStart := -1
-		for y := 0; y < img.Height; y++ {
-			c := img.Data[x+y*img.Width]
-			if colorOk(c) {
-				if runStart == -1 {
-					// new run
-					runStart = y
-				}
-			} else {
-				// Non-black; check for finished run
-				checkReportRun(y, x, runStart, runHandler)
-				runStart = -1
-			}
-		}
-		// check for finished run at end of row
-		checkReportRun(img.Height, x, runStart, runHandler)
-		runHandler.NextMinor()
+		runHandler.NextY()
 	}
 }

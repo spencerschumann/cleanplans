@@ -13,7 +13,7 @@ func TestPointJoiner(t *testing.T) {
 	tests := []struct {
 		Name   string
 		Input  [][]float32
-		Output []vectorize.JoinerLine
+		Output []vectorize.Blob
 	}{
 		{
 			Name:   "single point",
@@ -26,9 +26,9 @@ func TestPointJoiner(t *testing.T) {
 				{1, 5},
 				{1, 5},
 			},
-			Output: []vectorize.JoinerLine{
-				{{Major: 1, Minor: 0}, {Major: 1, Minor: 1}},
-				{{Major: 5, Minor: 0}, {Major: 5, Minor: 1}},
+			Output: []vectorize.Blob{
+				{{X: 1, Y: 0}, {X: 1, Y: 1}},
+				{{X: 5, Y: 0}, {X: 5, Y: 1}},
 			},
 		},
 
@@ -38,9 +38,9 @@ func TestPointJoiner(t *testing.T) {
 				{1, 10},
 				{2, 9},
 			},
-			Output: []vectorize.JoinerLine{
-				{{Major: 1, Minor: 0}, {Major: 2, Minor: 1}},
-				{{Major: 10, Minor: 0}, {Major: 9, Minor: 1}},
+			Output: []vectorize.Blob{
+				{{X: 1, Y: 0}, {X: 2, Y: 1}},
+				{{X: 10, Y: 0}, {X: 9, Y: 1}},
 			},
 		},
 
@@ -50,8 +50,8 @@ func TestPointJoiner(t *testing.T) {
 				{1, 10},
 				{1.1, 8.9},
 			},
-			Output: []vectorize.JoinerLine{
-				{{Major: 1, Minor: 0}, {Major: 1.1, Minor: 1}},
+			Output: []vectorize.Blob{
+				{{X: 1, Y: 0}, {X: 1.1, Y: 1}},
 			},
 		},
 
@@ -64,21 +64,21 @@ func TestPointJoiner(t *testing.T) {
 	}()
 	cfg.VectorizeMinLinePixelLength = 2
 	for _, test := range tests {
-		pj := vectorize.NewPointJoiner(10, 19, 1)
+		pj := vectorize.NewBlobFinder(10, 19)
 		for _, row := range test.Input {
 			for _, major := range row {
 				pj.AddRun(major, 0)
 			}
-			pj.NextMinor()
+			pj.NextY()
 		}
 
-		lines := pj.JoinerLines()
+		lines := pj.Blobs()
 		sort.Slice(lines, func(i, j int) bool {
 			a, b := lines[i][0], lines[j][0]
-			if a.Minor == b.Minor {
-				return a.Major < b.Major
+			if a.Y == b.Y {
+				return a.X < b.X
 			}
-			return a.Minor < b.Minor
+			return a.Y < b.Y
 		})
 
 		diff := cmp.Diff(test.Output, lines)

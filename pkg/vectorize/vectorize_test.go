@@ -48,11 +48,11 @@ func (r *testRunHandler) AddRun(center float32, width int) {
 	r.addRun(center, width)
 }
 
-func (r *testRunHandler) NextMinor() {
+func (r *testRunHandler) NextY() {
 	r.nextMinor()
 }
 
-func (r *testRunHandler) JoinerLines() []vectorize.JoinerLine {
+func (r *testRunHandler) JoinerLines() []vectorize.Blob {
 	return nil
 }
 
@@ -103,9 +103,9 @@ func TestRunDetection(t *testing.T) {
 
 func xTestLineDetection(t *testing.T) {
 	test := func(img *vectorize.ColorImage) {
-		pj := vectorize.NewPointJoiner(10, img.Width, 1)
+		pj := vectorize.NewBlobFinder(10, img.Width)
 		vectorize.FindHorizontalRuns(img, pj)
-		lines := pj.JoinerLines()
+		lines := pj.Blobs()
 		t.Errorf("Lines: %#v\n", lines)
 	}
 
