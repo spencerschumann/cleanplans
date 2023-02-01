@@ -232,6 +232,16 @@ func Vectorize(img *ColorImage) string {
 
 	//lineSet := NewLineSet(float64(img.Width), float64(img.Height))
 
+	addCircle := func(circle geometry.Circle) {
+		svg.Children = append(svg.Children, &cleaner.SVGXMLNode{
+			XMLName: xml.Name{Local: "circle"},
+			CX:      circle.Center.X,
+			CY:      circle.Center.Y,
+			Radius:  circle.Radius,
+			Styles:  "fill:none;stroke:#00aa00;stroke-width:.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
+		})
+	}
+
 	addLineTo := func(line geometry.Polyline, node *cleaner.SVGXMLNode) {
 		if len(line) < 2 {
 			return
@@ -301,6 +311,12 @@ func Vectorize(img *ColorImage) string {
 		line = append(line, line[0])
 		addBlobOutline(line)
 		addLine(blob.ToPolyline())
+
+		circle := blob.BestFitCircle()
+		if circle.Radius != 0 {
+			addCircle(circle)
+		}
+		addCircle = addCircle
 	}
 
 	data, err := svg.Marshal()

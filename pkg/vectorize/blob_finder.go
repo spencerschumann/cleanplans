@@ -16,64 +16,136 @@ type Run struct {
 // if the Y values differ by exactly 1, and the X values differ by at most 1.
 type Blob []Run
 
-/*func (b Blob) ToPolyline(xMajor bool) geometry.Polyline {
-	var polyline geometry.Polyline
-	if xMajor {
-		for _, p := range b {
-			polyline = append(polyline, geometry.Point{
-				X: p.X,
-				Y: p.Y,
-			})
-		}
-	} else {
-		for _, p := range b {
-			polyline = append(polyline, geometry.Point{
-				X: p.Y,
-				Y: p.X,
-			})
-		}
-	}
-	return polyline
-}*/
-
-func (b Blob) ToPolyline() geometry.Polyline {
-	// use linear regression to find the best-fit line to the blob
+// Use the technique from https://dtcenter.org/sites/default/files/community-code/met/docs/write-ups/circle_fit.pdf
+func (blob Blob) BestFitCircle() geometry.Circle {
+	// Calculate centroid (average x and y coordinates) of pixels in the blob
+	// Note: this was already calculated in ToPolyline; if that function is always called first,
+	// the result could be used to avoid recomputing it here. Might be worth converting blob
+	// to a struct and memoizing the result.
 	n := 0.0
 	sumX := 0.0
 	sumY := 0.0
-	sumXX := 0.0
-	sumXY := 0.0
-	minX := math.Inf(+1)
-	maxX := math.Inf(-1)
-	for _, run := range b {
+	for _, run := range blob {
+		y := run.Y + 0.5
 		width := run.X2 - run.X1
 		n += width
-		sumY += width * (run.Y + 0.5)
-		sx := width * (run.X1 + run.X2) / 2
-		sumX += sx
-		sumXY += sx * (run.Y + 0.5)
-		sumXX += width*run.X1*run.X1 + run.X1*width*width + width*width*width/3
+		sumY += width * y
+		runSumX := width * (run.X1 + run.X2) / 2
+		sumX += runSumX
+	}
+	avgX := sumX / n
+	avgY := sumY / n
+
+	// Calculate Sxxx sums for Eq. 4 and Eq. 5
+	Suv := 0.0
+	Suu := 0.0
+	Svv := 0.0
+	Suuu := 0.0
+	Svvv := 0.0
+	Suvv := 0.0
+	Svuu := 0.0
+	for _, run := range blob {
+		u1 := run.X1 - avgX
+		u2 := run.X2 - avgX
+		v := run.Y + 0.5 - avgY
+		width := u2 - u1
+		runSu := width * (u1 + u2) / 2
+		Suv += runSu * v
+		a := u1 + 0.5
+		b := u2 - 0.5
+		runSuu := (2*a*a + 2*a*b - a + 2*b*b + b) * (a - b - 1) / -6
+		Suu += runSuu
+		Svuu += runSuu * v
+		runSvv := v * v * width
+		Svv += runSvv
+		Svvv += runSvv * v
+		Suvv += runSu * v * v
+		Suuu += (a*a - a + b*b + b) * (a + b) * (a - b - 1) / -4
+	}
+
+	// Now solve the system of equations Eq. 4 and Eq. 5, substituting variables to match this format:
+	// 	a1 * uc + b1 * vc = c1
+	// 	a2 * uc + b1 * vc = c2
+	a1 := Suu
+	b1 := Suv
+	c1 := (Suuu + Suvv) / 2
+	a2 := Suv
+	b2 := Svv
+	c2 := (Svvv + Svuu) / 2
+	det := a1*b2 - a2*b1
+	if det == 0 {
+		// fail - can't find a suitable circle center
+		return geometry.Circle{}
+	}
+	uc := (c1*b2 - c2*b1) / det
+	vc := (a1*c2 - a2*c1) / det
+
+	// Substitute uc and uv into Eq. 6 to compute radius
+	radius := math.Sqrt(uc*uc + vc*vc + (Suu+Svv)/n)
+	xc := uc + avgX
+	yc := vc + avgY
+
+	return geometry.Circle{
+		Center: geometry.Point{X: xc, Y: yc},
+		Radius: radius,
+	}
+}
+
+func (blob Blob) ToPolyline() geometry.Polyline {
+	// use linear regression to find the best-fit line to the blob
+	n := 0.0
+	Sx := 0.0
+	Sxx := 0.0
+	Sy := 0.0
+	Syy := 0.0
+	Sxy := 0.0
+	minX := math.Inf(+1)
+	maxX := math.Inf(-1)
+	minY := math.Inf(+1)
+	maxY := math.Inf(-1)
+	for _, run := range blob {
+		y := run.Y + 0.5
+		width := run.X2 - run.X1
+		n += width
+		Sy += width * y
+		runSumX := width * (run.X1 + run.X2) / 2
+		Sx += runSumX
+		Sxy += runSumX * y
+
+		//a := run.X1 + 0.5
+		//b := run.X2 - 0.5
+		//Sxx += (2*a*a + 2*a*b - a + 2*b*b + b) * (a - b - 1) / -6
+
+		Sxx += width*run.X1*run.X1 + run.X1*width*width + width*width*width/3
+
+		Syy += y * y * width
 		minX = math.Min(minX, run.X1)
 		maxX = math.Max(maxX, run.X2)
+		minY = math.Min(minY, y)
+		maxY = math.Max(maxY, y)
 	}
-	// TODO: handle vertical and near-vertical - should switch to Y as the independent variable
-	betaDenominator := n*sumXX - sumX*sumX
-	if betaDenominator == 0 {
-		return geometry.Polyline{}
-	}
-	beta := (n*sumXY - sumX*sumY) / betaDenominator
-	alpha := sumY/n - beta*sumX/n
 
-	if beta < 0.5 {
-		// mostly horizontal - go from minX to maxX
+	betaDenominatorX := n*Sxx - Sx*Sx
+	betaDenominatorY := n*Syy - Sy*Sy
+	if betaDenominatorY < betaDenominatorX {
+		// mostly horizontal line
+		betaNumerator := n*Sxy - Sx*Sy
+		beta := betaNumerator / betaDenominatorX
+		alpha := Sy/n - beta*Sx/n
 		return geometry.Polyline{
 			{X: minX, Y: alpha + beta*minX},
 			{X: maxX, Y: alpha + beta*maxX},
 		}
+	} else {
+		// mostly vertical line
+		betaNumerator := n*Sxy - Sx*Sy
+		beta := betaNumerator / betaDenominatorY
+		alpha := Sx/n - beta*Sy/n
+		return geometry.Polyline{
+			{Y: minY, X: alpha + beta*minY},
+			{Y: maxY, X: alpha + beta*maxY},
+		}
 	}
-
-	// todo: handle mostly vertical case
-	return geometry.Polyline{}
 }
 
 type BlobFinder struct {
