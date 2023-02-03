@@ -96,17 +96,17 @@ type RunHandler interface {
 // This helps close gaps, but it also doesn't take into consideration line slope. It may
 // be better to do away with this when adding the code to join line segments to eliminate
 // gaps.
-func adjustLineEndpoints(line Blob) Blob {
+/*func adjustLineEndpoints(line Blob) Blob {
 	last := len(line) - 1
 	for i := 1; i < last; i++ {
 		line[i].Y += 0.5
 	}
 	line[last].Y += 1
 	return line
-}
+}*/
 
-func clearHorizontalRuns(img *ColorImage, blob Blob) {
-	for _, run := range blob {
+func clearHorizontalRuns(img *ColorImage, blob *Blob) {
+	for _, run := range blob.Runs {
 		for x := int(run.X1); x < int(run.X2); x++ {
 			img.Data[x+int(run.Y)*img.Width] = color.LightGray
 		}
@@ -220,15 +220,15 @@ func Vectorize(img *ColorImage) string {
 		Height: strconv.Itoa(img.Height),
 	}
 
-	/*addPoint := func(x, y float64) {
+	addPoint := func(x, y float64) {
 		svg.Children = append(svg.Children, &cleaner.SVGXMLNode{
 			XMLName: xml.Name{Local: "circle"},
 			CX:      x,
 			CY:      y,
-			Radius:  0.09,
+			Radius:  0.5,
 			Styles:  "fill:#00ff00",
 		})
-	}*/
+	}
 
 	//lineSet := NewLineSet(float64(img.Width), float64(img.Height))
 
@@ -268,8 +268,13 @@ func Vectorize(img *ColorImage) string {
 		addLineTo(line, &linePathNode)
 	}
 
+	// Ignore unused warnings
+	addCircle = addCircle
+	addLine = addLine
+	addPoint = addPoint
+
 	// First pass: find lines up to 45 degrees off vertical
-	bf := NewBlobFinder(10, img.Width)
+	bf := NewBlobFinder(10, img.Width, img.Height)
 	FindHorizontalRuns(img, bf)
 	blobs := bf.Blobs()
 	//lines = filterLines(bf, lines)
@@ -279,11 +284,11 @@ func Vectorize(img *ColorImage) string {
 		clearHorizontalRuns(img, blob)
 
 		margin := 0.2
-		x1, x2 := blob[0].X1, blob[0].X2
-		left := geometry.Polyline{{X: x1 + margin, Y: blob[0].Y + margin}}
-		right := geometry.Polyline{{X: x2 - margin, Y: blob[0].Y + margin}}
-		lastRun := blob[0]
-		for _, run := range blob[1:] {
+		x1, x2 := blob.Runs[0].X1, blob.Runs[0].X2
+		left := geometry.Polyline{{X: x1 + margin, Y: blob.Runs[0].Y + margin}}
+		right := geometry.Polyline{{X: x2 - margin, Y: blob.Runs[0].Y + margin}}
+		lastRun := blob.Runs[0]
+		for _, run := range blob.Runs[1:] {
 			if run.X1 < x1 {
 				left = append(left, geometry.Point{X: x1 + margin, Y: run.Y + margin})
 				left = append(left, geometry.Point{X: run.X1 + margin, Y: run.Y + margin})
@@ -310,13 +315,18 @@ func Vectorize(img *ColorImage) string {
 		// Close the loop
 		line = append(line, line[0])
 		addBlobOutline(line)
-		addLine(blob.ToPolyline())
 
-		circle := blob.BestFitCircle()
+		//addLine(blob.ToPolyline())
+
+		/*circle := blob.BestFitCircle()
 		if circle.Radius != 0 {
 			addCircle(circle)
-		}
-		addCircle = addCircle
+		}*/
+	}
+
+	for _, c := range bf.Connections() {
+		fmt.Println("Connection at", c.Location)
+		addPoint(c.Location.X, c.Location.Y)
 	}
 
 	data, err := svg.Marshal()
