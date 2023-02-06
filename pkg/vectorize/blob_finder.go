@@ -2,7 +2,6 @@ package vectorize
 
 import (
 	"cleanplans/pkg/geometry"
-	"fmt"
 	"math"
 )
 
@@ -25,6 +24,7 @@ type Connection struct {
 type Blob struct {
 	Runs        []Run
 	Connections map[*Connection]struct{}
+	Transposed  bool
 }
 
 // Use the technique from https://dtcenter.org/sites/default/files/community-code/met/docs/write-ups/circle_fit.pdf
@@ -284,8 +284,6 @@ func (bf *BlobFinder) AddRun(x1, x2 float64) {
 				}
 				bf.connect(blob, runBlob, location)
 				connected[blob] = true
-
-				fmt.Println("Add connection at", location, "between", prevRun, "and new run", run)
 			}
 		}
 	}
@@ -302,22 +300,86 @@ func (bf *BlobFinder) AddRun(x1, x2 float64) {
 	}
 }
 
-func (pj *BlobFinder) Blobs() []*Blob {
-	// Further calls to NextY or AddRun are undefined.
-	pj.buckets = nil
+func split(blob *Blob) []*Blob {
+	// might eventually want this, not sure.
+	/*lenCounts := map[int]int{}
+	for _, run := range blob.Runs {
+		width := int(run.X2 - run.X1 + 0.5)
+		lenCounts[width]++
+	}
+	lengths := []int{}
+	for l := range lenCounts {
+		lengths = append(lengths, l)
+	}
+	sort.Slice(lengths, func(i, j int) bool {
+		return lenCounts[lengths[i]] > lenCounts[lengths[j]]
+	})*/
 
-	// TODO: maybe there was no need to put blobs in a map like this...we'll see.
+	runs := blob.Runs
+
+	width := func(run Run) float64 {
+		return run.X2 - run.X1
+	}
+
 	var blobs []*Blob
-	for blob := range pj.blobs {
+	firstIndex := 0
+	lastW := width(runs[0])
+	for i, run := range runs {
+		if i == 0 {
+			continue
+		}
+		w := width(run)
+		// If successive runs differ by at least a minimum amount and factor, split there.
+		if math.Abs(lastW-w) > 3 && math.Max(lastW, w) > math.Min(lastW, w)*2 {
+			newBlob := &Blob{
+				Runs: runs[firstIndex:i],
+			}
+			blobs = append(blobs, newBlob)
+			firstIndex = i
+			blob.Runs = runs[i:]
+		}
+		lastW = w
+	}
+
+	if len(blobs) > 0 {
 		blobs = append(blobs, blob)
 	}
 
 	return blobs
 }
 
-func (pj *BlobFinder) Connections() []*Connection {
+func (bf *BlobFinder) splitBlobs() {
+	for blob := range bf.blobs {
+		blobs := split(blob)
+		if len(blobs) > 1 {
+			// TODO: recast all the connections
+			// For the first pass, don't worry about them.
+			delete(bf.blobs, blob)
+			for _, blob := range blobs {
+				bf.blobs[blob] = struct{}{}
+			}
+		}
+	}
+}
+
+func (bf *BlobFinder) Blobs() []*Blob {
+	// Further calls to NextY or AddRun are undefined.
+	bf.buckets = nil
+
+	//bf.splitBlobs()
+
+	// TODO: maybe there was no need to put blobs in a map like this...we'll see.
+	var blobs []*Blob
+	for blob := range bf.blobs {
+		blobs = append(blobs, blob)
+	}
+
+	return blobs
+}
+
+func (bf *BlobFinder) Connections() []*Connection {
 	var connections []*Connection
-	for c := range pj.connections {
+	for c := range bf.connections {
 		connections = append(connections, c)
 	}
 	return connections

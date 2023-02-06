@@ -18,6 +18,11 @@ type LineSegment struct {
 	B Point
 }
 
+type Rectangle struct {
+	Min Point
+	Max Point
+}
+
 type Polyline []Point
 
 type Circle struct {

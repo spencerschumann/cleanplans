@@ -210,9 +210,14 @@ func Vectorize(img *ColorImage) string {
 		Styles:   "fill:#000000;fill-opacity:0.5;stroke:#ee0000;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
+	rectPathNode := cleaner.SVGXMLNode{
+		XMLName:  xml.Name{Local: "path"},
+		Styles:   "fill:none;stroke:#00ee00;stroke-width:.2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
+		Category: cleaner.CategoryFullCut,
+	}
 	svg := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "svg"},
-		Children: []*cleaner.SVGXMLNode{&linePathNode, &blobPathNode /*&verticalRunPathNode*/},
+		Children: []*cleaner.SVGXMLNode{&linePathNode, &blobPathNode, &rectPathNode},
 
 		// Note: not using a unit specifier here for display, to match up with the png image. For
 		// the final output SVG (if that is the format I go with), these will need to be mapped to mm.
@@ -267,18 +272,31 @@ func Vectorize(img *ColorImage) string {
 	addLine := func(line geometry.Polyline) {
 		addLineTo(line, &linePathNode)
 	}
+	addRectLine := func(line geometry.Polyline) {
+		addLineTo(line, &rectPathNode)
+	}
 
 	// Ignore unused warnings
 	addCircle = addCircle
 	addLine = addLine
 	addPoint = addPoint
+	addRectLine = addRectLine
 
 	// First pass: find lines up to 45 degrees off vertical
 	bf := NewBlobFinder(10, img.Width, img.Height)
 	FindHorizontalRuns(img, bf)
 	blobs := bf.Blobs()
 	//lines = filterLines(bf, lines)
+
+	// Double transpose, to do the transposition but then to display in normal coords
+	var transposed []*Blob
 	for _, blob := range blobs {
+		for _, tBlob := range Transpose(blob) {
+			transposed = append(transposed, Transpose(tBlob)...)
+		}
+	}
+
+	for _, blob := range transposed {
 		// Note: won't even need this, since all pixels will be accounted for as blobs.
 		// But it's still useful for testing, to gray out the detected blobs.
 		clearHorizontalRuns(img, blob)
@@ -322,10 +340,24 @@ func Vectorize(img *ColorImage) string {
 		if circle.Radius != 0 {
 			addCircle(circle)
 		}*/
+
+		/*mr := FindMaxRect(blob)
+		mr.Min.X += margin * 2
+		mr.Min.Y += margin * 2
+		mr.Max.X -= margin * 2
+		mr.Max.Y -= margin * 2
+		tr := geometry.Point{
+			X: mr.Max.X,
+			Y: mr.Min.Y,
+		}
+		bl := geometry.Point{
+			X: mr.Min.X,
+			Y: mr.Max.Y,
+		}
+		addRectLine(geometry.Polyline{mr.Min, tr, mr.Max, bl, mr.Min})*/
 	}
 
 	for _, c := range bf.Connections() {
-		fmt.Println("Connection at", c.Location)
 		addPoint(c.Location.X, c.Location.Y)
 	}
 
