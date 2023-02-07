@@ -10,6 +10,8 @@ type Run struct {
 	X1 float64
 	X2 float64
 	Y  float64
+
+	MinCrossWidth float64
 }
 
 type Connection struct {

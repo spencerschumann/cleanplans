@@ -14,26 +14,44 @@ func Transpose(blob *Blob) []*Blob {
 		maxX = math.Max(run.X2, maxX)
 	}
 
-	width := maxX - minX
-	tRuns := make([][]Run, int(width))
-	/*for i := range tRuns {
-		tRuns[i].Y = float64(i) + minX
+	/*for _, run := range blob.Runs {
+		fmt.Print("[")
+		fmt.Print(strings.Repeat(" ", int(run.X1)))
+		fmt.Print(strings.Repeat("-", int(run.X2-run.X1)))
+		fmt.Print(strings.Repeat(" ", int(maxX-run.X2)))
+		fmt.Print("]  ")
+		fmt.Printf("%v\n", run)
 	}*/
 
-	add := func(x1, x2, y float64) {
+	width := maxX - minX
+	tRuns := make([][]Run, int(width))
+
+	add := func(x1, x2, y, width float64) {
 		for i := int(x1 - minX); i < int(x2-minX); i++ {
-			// TODO: will need an additional run if there has already been a closed run at this position.
+			//fmt.Printf("  add transposed run at X1/X2=%f, Y=%f, width=%f\n", y, float64(i)+minX, width)
 			tRuns[i] = append(tRuns[i], Run{
-				X1: y,
-				X2: y,
-				Y:  float64(i) + minX,
+				X1:            y,
+				X2:            y,
+				Y:             float64(i) + minX,
+				MinCrossWidth: width,
 			})
 		}
 	}
 
-	remove := func(x1, x2, y float64) {
+	remove := func(x1, x2, y, width float64) {
 		for i := int(x1 - minX); i < int(x2-minX); i++ {
-			tRuns[i][len(tRuns[i])-1].X2 = y
+			//fmt.Printf("  finish transposed run at X2=%f, ")
+			run := &(tRuns[i][len(tRuns[i])-1])
+			run.X2 = y
+			run.MinCrossWidth = math.Min(run.MinCrossWidth, width)
+		}
+	}
+
+	updateWidth := func(x1, x2, width float64) {
+		for i := int(x1 - minX); i < int(x2-minX); i++ {
+			//	fmt.Printf("  finish transposed run at X2=%f, ")
+			run := &(tRuns[i][len(tRuns[i])-1])
+			run.MinCrossWidth = math.Min(run.MinCrossWidth, width)
 		}
 	}
 
@@ -41,17 +59,24 @@ func Transpose(blob *Blob) []*Blob {
 	for _, run := range blob.Runs {
 		// wherever run reaches that lastRun did not, need to activate a new tRun
 		// wherever lastRun reaches that run does not, need to deactivate tRun
-		remove(lastRun.X1, math.Min(lastRun.X2, run.X1), run.Y) //ok
-		remove(math.Max(lastRun.X1, run.X2), lastRun.X2, run.Y) //ok
-		add(run.X1, math.Min(run.X2, lastRun.X1), run.Y)        //ok
-		add(math.Max(run.X1, lastRun.X2), run.X2, run.Y)        //ok
+		width := run.X2 - run.X1
+		remove(lastRun.X1, math.Min(lastRun.X2, run.X1), run.Y, width) //ok
+		remove(math.Max(lastRun.X1, run.X2), lastRun.X2, run.Y, width) //ok
+		add(run.X1, math.Min(run.X2, lastRun.X1), run.Y, width)        //ok
+		add(math.Max(run.X1, lastRun.X2), run.X2, run.Y, width)        //ok
+		updateWidth(math.Max(run.X1, lastRun.X1), math.Min(run.X2, lastRun.X2), width)
 		lastRun = run
 	}
-	remove(lastRun.X1, lastRun.X2, lastRun.Y+1)
+	remove(lastRun.X1, lastRun.X2, lastRun.Y+1, lastRun.X2-lastRun.X1)
 
 	var blobs []*Blob
 	for _, row := range tRuns {
 		for _, run := range row {
+			/*width := run.X2 - run.X1
+			if width > run.MinCrossWidth {
+				continue
+			}*/
+
 			// could use BlobFinder here, but it would need some rework,
 			// and this is a simpler case - not likely to have more than 2 blobs.
 

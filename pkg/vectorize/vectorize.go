@@ -106,9 +106,18 @@ type RunHandler interface {
 }*/
 
 func clearHorizontalRuns(img *ColorImage, blob *Blob) {
-	for _, run := range blob.Runs {
-		for x := int(run.X1); x < int(run.X2); x++ {
-			img.Data[x+int(run.Y)*img.Width] = color.LightGray
+	if blob.Transposed {
+		for _, run := range blob.Runs {
+			x := int(run.Y)
+			for y := int(run.X1); y < int(run.X2); y++ {
+				img.Data[x+y*img.Width] = color.LightGray
+			}
+		}
+	} else {
+		for _, run := range blob.Runs {
+			for x := int(run.X1); x < int(run.X2); x++ {
+				img.Data[x+int(run.Y)*img.Width] = color.LightGray
+			}
 		}
 	}
 }
@@ -210,14 +219,24 @@ func Vectorize(img *ColorImage) string {
 		Styles:   "fill:#000000;fill-opacity:0.5;stroke:#ee0000;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
+	transposedBlobPathNode := cleaner.SVGXMLNode{
+		XMLName:  xml.Name{Local: "path"},
+		Styles:   "fill:#000033;fill-opacity:0.2;stroke:#00aaaa;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
+		Category: cleaner.CategoryFullCut,
+	}
 	rectPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
 		Styles:   "fill:none;stroke:#00ee00;stroke-width:.2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
 	svg := cleaner.SVGXMLNode{
-		XMLName:  xml.Name{Local: "svg"},
-		Children: []*cleaner.SVGXMLNode{&linePathNode, &blobPathNode, &rectPathNode},
+		XMLName: xml.Name{Local: "svg"},
+		Children: []*cleaner.SVGXMLNode{
+			&linePathNode,
+			&blobPathNode,
+			&transposedBlobPathNode,
+			&rectPathNode,
+		},
 
 		// Note: not using a unit specifier here for display, to match up with the png image. For
 		// the final output SVG (if that is the format I go with), these will need to be mapped to mm.
@@ -269,6 +288,9 @@ func Vectorize(img *ColorImage) string {
 	addBlobOutline := func(line geometry.Polyline) {
 		addLineTo(line, &blobPathNode)
 	}
+	addTransposedBlobOutline := func(line geometry.Polyline) {
+		addLineTo(line, &transposedBlobPathNode)
+	}
 	addLine := func(line geometry.Polyline) {
 		addLineTo(line, &linePathNode)
 	}
@@ -277,10 +299,11 @@ func Vectorize(img *ColorImage) string {
 	}
 
 	// Ignore unused warnings
-	addCircle = addCircle
-	addLine = addLine
-	addPoint = addPoint
-	addRectLine = addRectLine
+	_ = addCircle
+	_ = addLine
+	_ = addTransposedBlobOutline
+	_ = addPoint
+	_ = addRectLine
 
 	// First pass: find lines up to 45 degrees off vertical
 	bf := NewBlobFinder(10, img.Width, img.Height)
@@ -289,14 +312,16 @@ func Vectorize(img *ColorImage) string {
 	//lines = filterLines(bf, lines)
 
 	// Double transpose, to do the transposition but then to display in normal coords
-	var transposed []*Blob
-	for _, blob := range blobs {
+	unfilteredBlobs := blobs
+	blobs = nil
+	for _, blob := range unfilteredBlobs {
 		for _, tBlob := range Transpose(blob) {
-			transposed = append(transposed, Transpose(tBlob)...)
+			//blobs = append(blobs, Transpose(tBlob)...)
+			blobs = append(blobs, tBlob)
 		}
 	}
 
-	for _, blob := range transposed {
+	for _, blob := range blobs {
 		// Note: won't even need this, since all pixels will be accounted for as blobs.
 		// But it's still useful for testing, to gray out the detected blobs.
 		clearHorizontalRuns(img, blob)
@@ -332,7 +357,16 @@ func Vectorize(img *ColorImage) string {
 		line = append(line, right...)
 		// Close the loop
 		line = append(line, line[0])
-		addBlobOutline(line)
+
+		if blob.Transposed {
+			for i := range line {
+				p := &(line[i])
+				p.X, p.Y = p.Y, p.X
+			}
+			addTransposedBlobOutline(line)
+		} else {
+			addBlobOutline(line)
+		}
 
 		//addLine(blob.ToPolyline())
 

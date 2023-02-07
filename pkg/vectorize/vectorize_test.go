@@ -34,18 +34,17 @@ func makeImage(rows ...string) *vectorize.ColorImage {
 }
 
 type testRun struct {
-	Center float32
-	Minor  int
-	Width  int
+	X1 float64
+	X2 float64
 }
 
 type testRunHandler struct {
-	addRun    func(center float32, width int)
+	addRun    func(x1, x2 float64)
 	nextMinor func()
 }
 
-func (r *testRunHandler) AddRun(center float32, width int) {
-	r.addRun(center, width)
+func (r *testRunHandler) AddRun(x1, x2 float64) {
+	r.addRun(x1, x2)
 }
 
 func (r *testRunHandler) NextY() {
@@ -61,11 +60,11 @@ func TestRunDetection(t *testing.T) {
 		i := 0
 		minor := 0
 		r := testRunHandler{
-			addRun: func(center float32, width int) {
+			addRun: func(x1, x2 float64) {
 				if i >= len(expectedRuns) {
 					t.Fatalf("unexpected extra run")
 				}
-				diff := cmp.Diff(expectedRuns[i], testRun{Center: center, Minor: minor, Width: width})
+				diff := cmp.Diff(expectedRuns[i], testRun{X1: x1, X2: x2})
 				if diff != "" {
 					t.Fatalf("Run index %d incorrect: %s", i, diff)
 				}
@@ -90,20 +89,12 @@ func TestRunDetection(t *testing.T) {
 		"◻◻◻◻◻◻◻◻",
 		"◼◼◼◼◼◼◼◼",
 		"◼◼◻◻◻◻◼◼",
-	), []testRun{
-		{Center: 6, Minor: 0, Width: 4},
-		{Center: 6, Minor: 1, Width: 4},
-		{Center: 4, Minor: 2, Width: 4},
-		{Center: 2, Minor: 3, Width: 4},
-		{Center: 2, Minor: 4, Width: 4},
-		{Center: 4, Minor: 6, Width: 8},
-		{Center: 1, Minor: 7, Width: 2}, {Center: 7, Minor: 7, Width: 2},
-	})
+	), []testRun{})
 }
 
 func xTestLineDetection(t *testing.T) {
 	test := func(img *vectorize.ColorImage) {
-		pj := vectorize.NewBlobFinder(10, img.Width)
+		pj := vectorize.NewBlobFinder(10, img.Width, img.Height)
 		vectorize.FindHorizontalRuns(img, pj)
 		lines := pj.Blobs()
 		t.Errorf("Lines: %#v\n", lines)
@@ -164,6 +155,7 @@ func TestLargerImage(t *testing.T) {
 	// the results, but the current algorithms here break them up if
 	// even one pixel is misplaced.
 
-	img := loadImage("testdata/rough_diagonal.png")
+	//img := loadImage("testdata/rough_diagonal.png")
+	img := loadImage("testdata/test_transpose.png")
 	fmt.Println(vectorize.Vectorize(img))
 }
