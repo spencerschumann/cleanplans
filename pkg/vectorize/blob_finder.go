@@ -10,15 +10,13 @@ type Run struct {
 	X1 float64
 	X2 float64
 	Y  float64
-
-	MinCrossWidth float64
 }
 
 type Connection struct {
 	A        *Blob
 	B        *Blob
 	Location geometry.Point
-	// TODO: optional extra point for weakly connected blobs?
+	// TODO: optional extra point for weakly connected blobs (i.e., dashed or broken lines)
 }
 
 // Blob is a sequence of adjacent runs. Runs are adjacent

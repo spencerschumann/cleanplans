@@ -3,103 +3,69 @@ package vectorize
 import (
 	"cleanplans/pkg/geometry"
 	"math"
+	"sort"
 )
 
-// Transpose flips the X/Y coordinates in the runs, creating vertical runs from horizontal runs.
-func Transpose(blob *Blob) []*Blob {
-	minX := math.Inf(1)
-	maxX := math.Inf(-1)
-	for _, run := range blob.Runs {
-		minX = math.Min(run.X1, minX)
-		maxX = math.Max(run.X2, maxX)
-	}
+// Transpose flips the X/Y coordinates in the blobs, creating vertical runs from horizontal runs.
+func Transpose(blobs []*Blob, maxX, maxY int) []*Blob {
+	tRuns := make([][]Run, maxX+1)
 
-	/*for _, run := range blob.Runs {
-		fmt.Print("[")
-		fmt.Print(strings.Repeat(" ", int(run.X1)))
-		fmt.Print(strings.Repeat("-", int(run.X2-run.X1)))
-		fmt.Print(strings.Repeat(" ", int(maxX-run.X2)))
-		fmt.Print("]  ")
-		fmt.Printf("%v\n", run)
-	}*/
-
-	width := maxX - minX
-	tRuns := make([][]Run, int(width))
-
-	add := func(x1, x2, y, width float64) {
-		for i := int(x1 - minX); i < int(x2-minX); i++ {
-			//fmt.Printf("  add transposed run at X1/X2=%f, Y=%f, width=%f\n", y, float64(i)+minX, width)
+	beginRun := func(x1, x2, y float64) {
+		for i := int(x1); i < int(x2); i++ {
 			tRuns[i] = append(tRuns[i], Run{
-				X1:            y,
-				X2:            y,
-				Y:             float64(i) + minX,
-				MinCrossWidth: width,
+				X1: y,
+				X2: y,
+				Y:  float64(i),
 			})
 		}
 	}
 
-	remove := func(x1, x2, y, width float64) {
-		for i := int(x1 - minX); i < int(x2-minX); i++ {
-			//fmt.Printf("  finish transposed run at X2=%f, ")
-			run := &(tRuns[i][len(tRuns[i])-1])
-			run.X2 = y
-			run.MinCrossWidth = math.Min(run.MinCrossWidth, width)
+	endRun := func(x1, x2, y float64) {
+		for i := int(x1); i < int(x2); i++ {
+			(tRuns[i][len(tRuns[i])-1]).X2 = y
 		}
 	}
 
-	updateWidth := func(x1, x2, width float64) {
-		for i := int(x1 - minX); i < int(x2-minX); i++ {
-			//	fmt.Printf("  finish transposed run at X2=%f, ")
-			run := &(tRuns[i][len(tRuns[i])-1])
-			run.MinCrossWidth = math.Min(run.MinCrossWidth, width)
+	for _, blob := range blobs {
+		lastRun := Run{}
+		for _, run := range blob.Runs {
+			// wherever lastRun reaches that run does not, need to deactivate tRun
+			endRun(lastRun.X1, math.Min(lastRun.X2, run.X1), run.Y)
+			endRun(math.Max(lastRun.X1, run.X2), lastRun.X2, run.Y)
+			// wherever run reaches that lastRun did not, need to activate a new tRun
+			beginRun(run.X1, math.Min(run.X2, lastRun.X1), run.Y)
+			beginRun(math.Max(run.X1, lastRun.X2), run.X2, run.Y)
+			lastRun = run
 		}
+		endRun(lastRun.X1, lastRun.X2, lastRun.Y+1)
 	}
 
-	lastRun := Run{X1: minX, X2: minX}
-	for _, run := range blob.Runs {
-		// wherever run reaches that lastRun did not, need to activate a new tRun
-		// wherever lastRun reaches that run does not, need to deactivate tRun
-		width := run.X2 - run.X1
-		remove(lastRun.X1, math.Min(lastRun.X2, run.X1), run.Y, width) //ok
-		remove(math.Max(lastRun.X1, run.X2), lastRun.X2, run.Y, width) //ok
-		add(run.X1, math.Min(run.X2, lastRun.X1), run.Y, width)        //ok
-		add(math.Max(run.X1, lastRun.X2), run.X2, run.Y, width)        //ok
-		updateWidth(math.Max(run.X1, lastRun.X1), math.Min(run.X2, lastRun.X2), width)
-		lastRun = run
-	}
-	remove(lastRun.X1, lastRun.X2, lastRun.Y+1, lastRun.X2-lastRun.X1)
-
-	var blobs []*Blob
+	bf := NewBlobFinder(10, maxX, maxY)
 	for _, row := range tRuns {
-		for _, run := range row {
-			/*width := run.X2 - run.X1
-			if width > run.MinCrossWidth {
-				continue
-			}*/
+		sort.Slice(row, func(i, j int) bool {
+			return row[i].X1 < row[j].X1
+		})
 
-			// could use BlobFinder here, but it would need some rework,
-			// and this is a simpler case - not likely to have more than 2 blobs.
+		i := 0
+		for i < len(row) {
+			run := row[i]
+			i++
+			// coalesce adjacent runs
+			for i < len(row) && run.X2 == row[i].X1 {
+				run.X2 = row[i].X2
+				i++
+			}
 
-			// search for a blob to extend
-			found := false
-			for _, blob := range blobs {
-				lastRun := blob.Runs[len(blob.Runs)-1]
-				if (lastRun.Y+1 == run.Y) && lastRun.overlap(run) {
-					blob.Runs = append(blob.Runs, run)
-					found = true
-					break
-				}
-			}
-			if !found {
-				newBlob := &Blob{
-					Runs:       []Run{run},
-					Transposed: !blob.Transposed,
-				}
-				blobs = append(blobs, newBlob)
-			}
+			bf.AddRun(run.X1, run.X2)
 		}
+
+		bf.NextY()
 	}
 
+	blobs = bf.Blobs()
+	for _, blob := range blobs {
+		blob.Transposed = true
+	}
 	return blobs
 }
 

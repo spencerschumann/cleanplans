@@ -312,14 +312,7 @@ func Vectorize(img *ColorImage) string {
 	//lines = filterLines(bf, lines)
 
 	// Double transpose, to do the transposition but then to display in normal coords
-	unfilteredBlobs := blobs
-	blobs = nil
-	for _, blob := range unfilteredBlobs {
-		for _, tBlob := range Transpose(blob) {
-			//blobs = append(blobs, Transpose(tBlob)...)
-			blobs = append(blobs, tBlob)
-		}
-	}
+	blobs = Transpose(blobs, img.Width, img.Height)
 
 	for _, blob := range blobs {
 		// Note: won't even need this, since all pixels will be accounted for as blobs.
@@ -367,28 +360,6 @@ func Vectorize(img *ColorImage) string {
 		} else {
 			addBlobOutline(line)
 		}
-
-		//addLine(blob.ToPolyline())
-
-		/*circle := blob.BestFitCircle()
-		if circle.Radius != 0 {
-			addCircle(circle)
-		}*/
-
-		/*mr := FindMaxRect(blob)
-		mr.Min.X += margin * 2
-		mr.Min.Y += margin * 2
-		mr.Max.X -= margin * 2
-		mr.Max.Y -= margin * 2
-		tr := geometry.Point{
-			X: mr.Max.X,
-			Y: mr.Min.Y,
-		}
-		bl := geometry.Point{
-			X: mr.Min.X,
-			Y: mr.Max.Y,
-		}
-		addRectLine(geometry.Polyline{mr.Min, tr, mr.Max, bl, mr.Min})*/
 	}
 
 	for _, c := range bf.Connections() {
