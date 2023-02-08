@@ -305,51 +305,18 @@ func Vectorize(img *ColorImage) string {
 	_ = addPoint
 	_ = addRectLine
 
-	// First pass: find lines up to 45 degrees off vertical
 	bf := NewBlobFinder(10, img.Width, img.Height)
 	FindHorizontalRuns(img, bf)
 	blobs := bf.Blobs()
-	//lines = filterLines(bf, lines)
 
-	// Double transpose, to do the transposition but then to display in normal coords
-	blobs = Transpose(blobs, img.Width, img.Height)
+	blobs, connections := Transpose(blobs, img.Width, img.Height)
 
 	for _, blob := range blobs {
 		// Note: won't even need this, since all pixels will be accounted for as blobs.
 		// But it's still useful for testing, to gray out the detected blobs.
 		clearHorizontalRuns(img, blob)
 
-		margin := 0.2
-		x1, x2 := blob.Runs[0].X1, blob.Runs[0].X2
-		left := geometry.Polyline{{X: x1 + margin, Y: blob.Runs[0].Y + margin}}
-		right := geometry.Polyline{{X: x2 - margin, Y: blob.Runs[0].Y + margin}}
-		lastRun := blob.Runs[0]
-		for _, run := range blob.Runs[1:] {
-			if run.X1 < x1 {
-				left = append(left, geometry.Point{X: x1 + margin, Y: run.Y + margin})
-				left = append(left, geometry.Point{X: run.X1 + margin, Y: run.Y + margin})
-			} else if x1 < run.X1 {
-				left = append(left, geometry.Point{X: x1 + margin, Y: lastRun.Y + 1 - margin})
-				left = append(left, geometry.Point{X: run.X1 + margin, Y: lastRun.Y + 1 - margin})
-			}
-			if run.X2 < x2 {
-				right = append(right, geometry.Point{X: x2 - margin, Y: lastRun.Y + 1 - margin})
-				right = append(right, geometry.Point{X: run.X2 - margin, Y: lastRun.Y + 1 - margin})
-			} else if x2 < run.X2 {
-				right = append(right, geometry.Point{X: x2 - margin, Y: run.Y + margin})
-				right = append(right, geometry.Point{X: run.X2 - margin, Y: run.Y + margin})
-			}
-			x1 = run.X1
-			x2 = run.X2
-			lastRun = run
-		}
-		left = append(left, geometry.Point{X: lastRun.X1 + margin, Y: lastRun.Y + 1 - margin})
-		right = append(right, geometry.Point{X: lastRun.X2 - margin, Y: lastRun.Y + 1 - margin})
-		line := geometry.Polyline(left)
-		reverse(right)
-		line = append(line, right...)
-		// Close the loop
-		line = append(line, line[0])
+		line := blob.Outline(0.2)
 
 		if blob.Transposed {
 			for i := range line {
@@ -362,8 +329,12 @@ func Vectorize(img *ColorImage) string {
 		}
 	}
 
-	for _, c := range bf.Connections() {
-		addPoint(c.Location.X, c.Location.Y)
+	for _, c := range connections {
+		if c.A.Transposed {
+			addPoint(c.Location.Y, c.Location.X)
+		} else {
+			addPoint(c.Location.X, c.Location.Y)
+		}
 	}
 
 	data, err := svg.Marshal()

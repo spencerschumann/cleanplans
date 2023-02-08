@@ -6,8 +6,43 @@ import (
 	"sort"
 )
 
+// Outline creates a polyline that traces the outline of the blob.
+func (blob *Blob) Outline(margin float64) geometry.Polyline {
+	x1, x2 := blob.Runs[0].X1, blob.Runs[0].X2
+	left := geometry.Polyline{{X: x1 + margin, Y: blob.Runs[0].Y + margin}}
+	right := geometry.Polyline{{X: x2 - margin, Y: blob.Runs[0].Y + margin}}
+	lastRun := blob.Runs[0]
+	for _, run := range blob.Runs[1:] {
+		if run.X1 < x1 {
+			left = append(left, geometry.Point{X: x1 + margin, Y: run.Y + margin})
+			left = append(left, geometry.Point{X: run.X1 + margin, Y: run.Y + margin})
+		} else if x1 < run.X1 {
+			left = append(left, geometry.Point{X: x1 + margin, Y: lastRun.Y + 1 - margin})
+			left = append(left, geometry.Point{X: run.X1 + margin, Y: lastRun.Y + 1 - margin})
+		}
+		if run.X2 < x2 {
+			right = append(right, geometry.Point{X: x2 - margin, Y: lastRun.Y + 1 - margin})
+			right = append(right, geometry.Point{X: run.X2 - margin, Y: lastRun.Y + 1 - margin})
+		} else if x2 < run.X2 {
+			right = append(right, geometry.Point{X: x2 - margin, Y: run.Y + margin})
+			right = append(right, geometry.Point{X: run.X2 - margin, Y: run.Y + margin})
+		}
+		x1 = run.X1
+		x2 = run.X2
+		lastRun = run
+	}
+	left = append(left, geometry.Point{X: lastRun.X1 + margin, Y: lastRun.Y + 1 - margin})
+	right = append(right, geometry.Point{X: lastRun.X2 - margin, Y: lastRun.Y + 1 - margin})
+	line := geometry.Polyline(left)
+	reverse(right)
+	line = append(line, right...)
+	// Close the loop
+	line = append(line, line[0])
+	return line
+}
+
 // Transpose flips the X/Y coordinates in the blobs, creating vertical runs from horizontal runs.
-func Transpose(blobs []*Blob, maxX, maxY int) []*Blob {
+func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection) {
 	tRuns := make([][]Run, maxX+1)
 
 	beginRun := func(x1, x2, y float64) {
@@ -66,7 +101,8 @@ func Transpose(blobs []*Blob, maxX, maxY int) []*Blob {
 	for _, blob := range blobs {
 		blob.Transposed = true
 	}
-	return blobs
+	connections := bf.Connections()
+	return blobs, connections
 }
 
 func FindMaxRect(blob *Blob) geometry.Rectangle {
