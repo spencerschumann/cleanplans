@@ -31,6 +31,7 @@ const (
 	Cyan
 	Orange
 	LightGray
+	LightPurple
 )
 
 var Palette = color.Palette{
@@ -44,6 +45,7 @@ var Palette = color.Palette{
 	color.RGBA{R: 0x00, G: 0xbb, B: 0xdd, A: 0xff}, // Cyan
 	color.RGBA{R: 0xff, G: 0xdd, B: 0x00, A: 0xff}, // Orange
 	color.RGBA{R: 0xdd, G: 0xdd, B: 0xdd, A: 0xff}, // LightGray
+	color.RGBA{R: 0xdd, G: 0x77, B: 0xff, A: 0xff}, // LightPurple
 }
 
 func ColorToImageColor(c Color) color.Color {

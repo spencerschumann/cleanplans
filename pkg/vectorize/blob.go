@@ -42,7 +42,7 @@ func (blob *Blob) Outline(margin float64) geometry.Polyline {
 }
 
 // Transpose flips the X/Y coordinates in the blobs, creating vertical runs from horizontal runs.
-func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection) {
+func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, [][]Run) {
 	tRuns := make([][]Run, maxX+1)
 
 	beginRun := func(x1, x2, y float64) {
@@ -102,7 +102,7 @@ func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection) {
 		blob.Transposed = true
 	}
 	connections := bf.Connections()
-	return blobs, connections
+	return blobs, connections, tRuns
 }
 
 func FindMaxRect(blob *Blob) geometry.Rectangle {

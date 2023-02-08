@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"image"
 	imgcolor "image/color"
+	"math"
+	"sort"
 	"strconv"
 )
 
@@ -216,7 +218,7 @@ func Vectorize(img *ColorImage) string {
 	}
 	blobPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
-		Styles:   "fill:#000000;fill-opacity:0.5;stroke:#ee0000;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
+		Styles:   "fill:#000000;fill-opacity:0.3;stroke:#ee0000;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
 	transposedBlobPathNode := cleaner.SVGXMLNode{
@@ -309,12 +311,42 @@ func Vectorize(img *ColorImage) string {
 	FindHorizontalRuns(img, bf)
 	blobs := bf.Blobs()
 
-	blobs, connections := Transpose(blobs, img.Width, img.Height)
+	tBlobs, connections, tRuns := Transpose(blobs, img.Width, img.Height)
+	_ = tBlobs
+	_ = connections
 
 	for _, blob := range blobs {
+		//clearHorizontalRuns(img, blob)
+		for _, run := range blob.Runs {
+			width := run.X2 - run.X1
+			for x := int(run.X1); x < int(run.X2); x++ {
+				tRow := tRuns[x]
+				ti := sort.Search(len(tRow), func(i int) bool {
+					return run.Y <= tRow[i].X2
+				})
+				tWidth := math.Inf(+1)
+				if ti < len(tRow) {
+					tWidth = tRow[ti].X2 - tRow[ti].X1
+				}
+				ii := 0
+				if blob.Transposed {
+					ii = int(run.Y) + x*img.Width
+				} else {
+					ii = x + int(run.Y)*img.Width
+				}
+				if tWidth < width {
+					img.Data[ii] = color.LightPurple
+				} else if width < tWidth {
+					img.Data[ii] = color.LightGray
+				}
+			}
+		}
+	}
+
+	for _, blob := range tBlobs {
 		// Note: won't even need this, since all pixels will be accounted for as blobs.
 		// But it's still useful for testing, to gray out the detected blobs.
-		clearHorizontalRuns(img, blob)
+		//clearHorizontalRuns(img, blob)
 
 		line := blob.Outline(0.2)
 
@@ -329,13 +361,13 @@ func Vectorize(img *ColorImage) string {
 		}
 	}
 
-	for _, c := range connections {
+	/*for _, c := range connections {
 		if c.A.Transposed {
 			addPoint(c.Location.Y, c.Location.X)
 		} else {
 			addPoint(c.Location.X, c.Location.Y)
 		}
-	}
+	}*/
 
 	data, err := svg.Marshal()
 	if err != nil {
