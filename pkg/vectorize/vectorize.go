@@ -315,8 +315,8 @@ func Vectorize(img *ColorImage) string {
 	_ = tBlobs
 	_ = connections
 
+	// Colorize based on shortest run direction
 	for _, blob := range blobs {
-		//clearHorizontalRuns(img, blob)
 		for _, run := range blob.Runs {
 			width := run.X2 - run.X1
 			for x := int(run.X1); x < int(run.X2); x++ {
@@ -325,9 +325,9 @@ func Vectorize(img *ColorImage) string {
 					return run.Y <= tRow[i].X2
 				})
 				tWidth := math.Inf(+1)
-				if ti < len(tRow) {
-					tWidth = tRow[ti].X2 - tRow[ti].X1
-				}
+				//if ti < len(tRow) {
+				tWidth = tRow[ti].X2 - tRow[ti].X1
+				//}
 				ii := 0
 				if blob.Transposed {
 					ii = int(run.Y) + x*img.Width
@@ -343,7 +343,7 @@ func Vectorize(img *ColorImage) string {
 		}
 	}
 
-	for _, blob := range tBlobs {
+	for _, blob := range blobs {
 		// Note: won't even need this, since all pixels will be accounted for as blobs.
 		// But it's still useful for testing, to gray out the detected blobs.
 		//clearHorizontalRuns(img, blob)

@@ -43,6 +43,12 @@ func (blob *Blob) Outline(margin float64) geometry.Polyline {
 
 // Transpose flips the X/Y coordinates in the blobs, creating vertical runs from horizontal runs.
 func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, [][]Run) {
+
+	// TODO: idea, may not need to actually build blobs until later on. Instead I can
+	// use this new idea of [][]Run. I could even apply the bucketization idea for efficient
+	// lookups. Then I can process the horizontal and vertical sets of runs to sort out
+	// which to use for each pixel, and only then build up the blobs.
+
 	tRuns := make([][]Run, maxX+1)
 
 	beginRun := func(x1, x2, y float64) {
@@ -76,24 +82,25 @@ func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, [][]Run) 
 	}
 
 	bf := NewBlobFinder(10, maxX, maxY)
-	for _, row := range tRuns {
+	for i, row := range tRuns {
 		sort.Slice(row, func(i, j int) bool {
 			return row[i].X1 < row[j].X1
 		})
 
-		i := 0
-		for i < len(row) {
-			run := row[i]
-			i++
+		coalesced := []Run{}
+		j := 0
+		for j < len(row) {
+			run := row[j]
+			j++
 			// coalesce adjacent runs
-			for i < len(row) && run.X2 == row[i].X1 {
-				run.X2 = row[i].X2
-				i++
+			for j < len(row) && run.X2 == row[j].X1 {
+				run.X2 = row[j].X2
+				j++
 			}
-
+			coalesced = append(coalesced, run)
 			bf.AddRun(run.X1, run.X2)
 		}
-
+		tRuns[i] = coalesced
 		bf.NextY()
 	}
 
