@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"image"
 	imgcolor "image/color"
-	"math"
 	"sort"
 	"strconv"
 )
@@ -308,6 +307,7 @@ func Vectorize(img *ColorImage) string {
 	_ = addRectLine
 
 	bf := NewBlobFinder(10, img.Width, img.Height)
+	bf.TrackRuns = true
 	FindHorizontalRuns(img, bf)
 	blobs := bf.Blobs()
 
@@ -324,10 +324,16 @@ func Vectorize(img *ColorImage) string {
 				ti := sort.Search(len(tRow), func(i int) bool {
 					return run.Y <= tRow[i].X2
 				})
-				tWidth := math.Inf(+1)
-				//if ti < len(tRow) {
-				tWidth = tRow[ti].X2 - tRow[ti].X1
-				//}
+				tRun := tRow[ti]
+				tWidth := tRun.X2 - tRun.X1
+
+				if tWidth <= width {
+					run.Eclipsed = true
+				}
+				if width <= tWidth {
+					tRun.Eclipsed = true
+				}
+
 				ii := 0
 				if blob.Transposed {
 					ii = int(run.Y) + x*img.Width
@@ -343,21 +349,65 @@ func Vectorize(img *ColorImage) string {
 		}
 	}
 
-	for _, blob := range blobs {
+	hbf := NewBlobFinder(10, img.Width, img.Height)
+	for _, row := range bf.Runs {
+		for _, run := range row {
+			if !run.Eclipsed {
+				hbf.AddRun(run.X1, run.X2) // TODO: pass run to AddRun instead?
+			}
+		}
+		hbf.NextY()
+	}
+	vbf := NewBlobFinder(10, img.Height, img.Width)
+	for _, row := range tRuns {
+		for _, tRun := range row {
+			if !tRun.Eclipsed {
+				vbf.AddRun(tRun.X1, tRun.X2)
+			}
+		}
+		vbf.NextY()
+	}
+	vBlobs := vbf.Blobs()
+	for _, blob := range vBlobs {
+		blob.Transposed = true
+	}
+
+	for _, blob := range append(hbf.Blobs(), vBlobs...) {
 		// Note: won't even need this, since all pixels will be accounted for as blobs.
 		// But it's still useful for testing, to gray out the detected blobs.
 		//clearHorizontalRuns(img, blob)
 
-		line := blob.Outline(0.2)
+		outline := blob.Outline(0.2)
+		var line geometry.Polyline
+
+		wSum := 0.0
+		for _, run := range blob.Runs {
+			wSum += run.X2 - run.X1
+		}
+		count := float64(len(blob.Runs))
+		wAvg := wSum / count
+		if wAvg*1.5 < count {
+			line = blob.ToPolyline()
+		}
 
 		if blob.Transposed {
-			for i := range line {
-				p := &(line[i])
+			for i := range outline {
+				p := &outline[i]
 				p.X, p.Y = p.Y, p.X
 			}
-			addTransposedBlobOutline(line)
+			for i := range line {
+				p := &line[i]
+				p.X, p.Y = p.Y, p.X
+			}
+			addTransposedBlobOutline(outline)
+			if len(line) > 0 {
+				addLine(line)
+			}
 		} else {
-			addBlobOutline(line)
+			addBlobOutline(outline)
+			if len(line) > 0 {
+				addLine(line)
+			}
 		}
 	}
 

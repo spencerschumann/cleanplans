@@ -7,9 +7,10 @@ import (
 
 // Run is a horizontal set of adjacent, same-colored pixels.
 type Run struct {
-	X1 float64
-	X2 float64
-	Y  float64
+	X1       float64
+	X2       float64
+	Y        float64
+	Eclipsed bool
 }
 
 type Connection struct {
@@ -22,7 +23,7 @@ type Connection struct {
 // Blob is a sequence of adjacent runs. Runs are adjacent
 // if the Y values differ by exactly 1, and the X values differ by at most 1.
 type Blob struct {
-	Runs        []Run
+	Runs        []*Run
 	Connections map[*Connection]struct{}
 	Transposed  bool
 }
@@ -165,10 +166,12 @@ type BlobFinder struct {
 	y           int
 	bucketSize  int
 	numBuckets  int
-	buckets     []map[Run]*Blob
-	prevBuckets []map[Run]*Blob
+	buckets     []map[*Run]*Blob
+	prevBuckets []map[*Run]*Blob
 	blobs       map[*Blob]struct{}
 	connections map[*Connection]struct{}
+	Runs        [][]*Run
+	TrackRuns   bool
 
 	//blobs *quadtree.QuadTree
 }
@@ -184,6 +187,7 @@ func NewBlobFinder(bucketSize, maxX, maxY int) *BlobFinder {
 		numBuckets:  numBuckets,
 		blobs:       map[*Blob]struct{}{},
 		connections: map[*Connection]struct{}{},
+		Runs:        [][]*Run{{}},
 	}
 
 	// First call adds a row of buckets, second call makes another
@@ -196,23 +200,26 @@ func NewBlobFinder(bucketSize, maxX, maxY int) *BlobFinder {
 
 func (bf *BlobFinder) makeBuckets() {
 	bf.prevBuckets = bf.buckets
-	bf.buckets = make([]map[Run]*Blob, bf.numBuckets)
+	bf.buckets = make([]map[*Run]*Blob, bf.numBuckets)
 	for i := 0; i < bf.numBuckets; i++ {
-		bf.buckets[i] = map[Run]*Blob{}
+		bf.buckets[i] = map[*Run]*Blob{}
 	}
 }
 
 func (bf *BlobFinder) NextY() {
 	bf.y++
 	bf.makeBuckets()
+	if bf.TrackRuns {
+		bf.Runs = append(bf.Runs, []*Run{})
+	}
 }
 
 // overlap returns true if the two runs overlap, including diagonally
-func (r Run) overlap(other Run) bool {
+func (r *Run) overlap(other *Run) bool {
 	return r.X1 <= other.X2 && other.X1 <= r.X2
 }
 
-func (bf *BlobFinder) runBuckets(run Run) (int, int) {
+func (bf *BlobFinder) runBuckets(run *Run) (int, int) {
 	// diagonally adjacent runs are treated as connected, so extend the x values by 1 to compensate.
 	first := int(run.X1-1) / bf.bucketSize
 	last := int(run.X2+1) / bf.bucketSize
@@ -253,7 +260,10 @@ func (bf *BlobFinder) connect(a, b *Blob, location geometry.Point) {
 
 func (bf *BlobFinder) AddRun(x1, x2 float64) {
 	var runBlob *Blob
-	run := Run{X1: x1, X2: x2, Y: float64(bf.y)}
+	run := &Run{X1: x1, X2: x2, Y: float64(bf.y)}
+	if bf.TrackRuns {
+		bf.Runs[bf.y] = append(bf.Runs[bf.y], run)
+	}
 	firstBucketIdx, lastBucketIdx := bf.runBuckets(run)
 	connected := map[*Blob]bool{}
 	for i := firstBucketIdx; i <= lastBucketIdx; i++ {
@@ -317,7 +327,7 @@ func split(blob *Blob) []*Blob {
 
 	runs := blob.Runs
 
-	width := func(run Run) float64 {
+	width := func(run *Run) float64 {
 		return run.X2 - run.X1
 	}
 
