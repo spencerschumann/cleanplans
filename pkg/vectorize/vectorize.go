@@ -199,6 +199,31 @@ func trimLines(lines []Blob) []Blob {
 	return result
 }*/
 
+// This one is useful enough to leave here; for now, just as a comment.
+func arcToPath(arc geometry.Arc) string {
+	// Arc path format:
+	// A rx ry x-axis-rotation large-arc-flag sweep-flag x y
+
+	radius := arc.Start.Distance(arc.Center)
+
+	sweepFlag := 0
+	if arc.Clockwise {
+		sweepFlag = 1
+	}
+
+	largeFlag := 0
+	crossProduct := arc.Start.Minus(arc.Center).CrossProductZ(arc.End.Minus(arc.Center))
+	if (crossProduct < 1) == arc.Clockwise {
+		largeFlag = 1
+	}
+
+	return fmt.Sprintf(" M %f %f A %f %f 0 %d %d %f %f ",
+		arc.Start.X, arc.Start.Y,
+		radius, radius, largeFlag, sweepFlag,
+		arc.End.X, arc.End.Y,
+	)
+}
+
 func reverse[T any](input []T) {
 	inputLen := len(input)
 	inputMid := inputLen / 2
@@ -213,6 +238,11 @@ func Vectorize(img *ColorImage) string {
 	linePathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
 		Styles:   "fill:none;stroke:#aa0000;stroke-width:.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
+		Category: cleaner.CategoryFullCut,
+	}
+	arcPathNode := cleaner.SVGXMLNode{
+		XMLName:  xml.Name{Local: "path"},
+		Styles:   "fill:none;stroke:#aa0077;stroke-width:.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
 	blobPathNode := cleaner.SVGXMLNode{
@@ -379,6 +409,8 @@ func Vectorize(img *ColorImage) string {
 
 		outline := blob.Outline(0.2)
 		var line geometry.Polyline
+		var arc geometry.Arc
+		//var circle geometry.Circle
 
 		wSum := 0.0
 		for _, run := range blob.Runs {
@@ -388,6 +420,8 @@ func Vectorize(img *ColorImage) string {
 		wAvg := wSum / count
 		if wAvg*1.5 < count {
 			line = blob.ToPolyline()
+			arc = blob.BestFitArc()
+			//circle = blob.BestFitCircle()
 		}
 
 		if blob.Transposed {
@@ -395,21 +429,24 @@ func Vectorize(img *ColorImage) string {
 				p := &outline[i]
 				p.X, p.Y = p.Y, p.X
 			}
-			for i := range line {
-				p := &line[i]
-				p.X, p.Y = p.Y, p.X
-			}
 			addTransposedBlobOutline(outline)
-			if len(line) > 0 {
-				addLine(line)
-			}
 		} else {
 			addBlobOutline(outline)
-			if len(line) > 0 {
-				addLine(line)
-			}
+
 		}
+
+		if (arc != geometry.Arc{}) {
+			arcPathNode.D += arcToPath(arc)
+			//addCircle(circle)
+		}
+		if len(line) > 0 {
+			addLine(line)
+		}
+		/*if circle.Radius > 30 {
+			break
+		}*/
 	}
+	svg.Children = append(svg.Children, &arcPathNode)
 
 	/*for _, c := range connections {
 		if c.A.Transposed {

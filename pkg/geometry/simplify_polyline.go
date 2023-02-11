@@ -93,6 +93,13 @@ func (a Vector2) Minus(b Vector2) Vector2 {
 	}
 }
 
+func (a Vector2) Add(b Vector2) Vector2 {
+	return Vector2{
+		X: a.X + b.X,
+		Y: a.Y + b.Y,
+	}
+}
+
 func (v Vector2) Magnitude() float64 {
 	return math.Hypot(v.X, v.Y)
 }
@@ -104,6 +111,11 @@ func (a Vector2) CrossProductZ(b Vector2) float64 {
 // Distance returns the distance between two points.
 func (p Point) Distance(other Point) float64 {
 	return math.Hypot(p.X-other.X, p.Y-other.Y)
+}
+
+// Scale returns the point scaled by the given factor f.
+func (p Point) Scale(f float64) Point {
+	return Point{X: p.X * f, Y: p.Y * f}
 }
 
 // Distance returns the distance between a point and a line segment.

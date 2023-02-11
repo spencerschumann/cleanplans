@@ -28,6 +28,50 @@ type Blob struct {
 	Transposed  bool
 }
 
+func (blob *Blob) BestFitArc() geometry.Arc {
+	circle := blob.BestFitCircle()
+	if circle.Radius == 0 {
+		return geometry.Arc{}
+	}
+
+	// Find start and end points; use the mid point of the first and last run, and find the intersection
+	// between the circle and the lines between the center point and each of these end points.
+
+	runToPoint := func(run *Run) geometry.Point {
+		p := geometry.Point{
+			X: (run.X1 + run.X2) / 2,
+			Y: run.Y + 0.5,
+		}
+		if blob.Transposed {
+			p.X, p.Y = p.Y, p.X
+		}
+		// Find where this point's ray from the center intersects the circle
+		d := p.Distance(circle.Center)
+		p = p.Minus(circle.Center).Scale(circle.Radius / d)
+		result := p.Add(circle.Center)
+		//fmt.Printf("Point: %#v, d: %f, radius: %f, result: %#v, result.Diistance(circle.Center): %f\n",
+		//	p, d, circle.Radius, result, result.Distance(circle.Center))
+		return result
+	}
+
+	// To find the arc direction, look at the cross product between the segment from center to start and the
+	// segment from center to the middle run of the blob.
+	start := runToPoint(blob.Runs[0])
+	mid := runToPoint(blob.Runs[len(blob.Runs)/2])
+	end := runToPoint(blob.Runs[len(blob.Runs)-1])
+
+	clockwise := (start.Minus(circle.Center)).CrossProductZ(mid.Minus(circle.Center)) > 0
+
+	//fmt.Printf("Circle: %#v\n  start: %#v\n  mid: %#v\n  end: %#v\n  clockwise: %t\n", circle, start, mid, end, clockwise)
+
+	return geometry.Arc{
+		Start:     start,
+		End:       end,
+		Center:    circle.Center,
+		Clockwise: clockwise,
+	}
+}
+
 // Use the technique from https://dtcenter.org/sites/default/files/community-code/met/docs/write-ups/circle_fit.pdf
 func (blob *Blob) BestFitCircle() geometry.Circle {
 	// Calculate centroid (average x and y coordinates) of pixels in the blob
@@ -97,6 +141,10 @@ func (blob *Blob) BestFitCircle() geometry.Circle {
 	xc := uc + avgX
 	yc := vc + avgY
 
+	if blob.Transposed {
+		xc, yc = yc, xc
+	}
+
 	return geometry.Circle{
 		Center: geometry.Point{X: xc, Y: yc},
 		Radius: radius,
@@ -139,6 +187,7 @@ func (blob *Blob) ToPolyline() geometry.Polyline {
 		maxY = math.Max(maxY, y)
 	}
 
+	var line geometry.Polyline
 	betaDenominatorX := n*Sxx - Sx*Sx
 	betaDenominatorY := n*Syy - Sy*Sy
 	if betaDenominatorY < betaDenominatorX {
@@ -146,7 +195,7 @@ func (blob *Blob) ToPolyline() geometry.Polyline {
 		betaNumerator := n*Sxy - Sx*Sy
 		beta := betaNumerator / betaDenominatorX
 		alpha := Sy/n - beta*Sx/n
-		return geometry.Polyline{
+		line = geometry.Polyline{
 			{X: minX, Y: alpha + beta*minX},
 			{X: maxX, Y: alpha + beta*maxX},
 		}
@@ -155,11 +204,19 @@ func (blob *Blob) ToPolyline() geometry.Polyline {
 		betaNumerator := n*Sxy - Sx*Sy
 		beta := betaNumerator / betaDenominatorY
 		alpha := Sx/n - beta*Sy/n
-		return geometry.Polyline{
+		line = geometry.Polyline{
 			{Y: minY, X: alpha + beta*minY},
 			{Y: maxY, X: alpha + beta*maxY},
 		}
 	}
+
+	if blob.Transposed {
+		for i := range line {
+			p := &line[i]
+			p.X, p.Y = p.Y, p.X
+		}
+	}
+	return line
 }
 
 type BlobFinder struct {
