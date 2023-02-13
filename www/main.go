@@ -34,35 +34,6 @@ func main() {
 	<-make(chan any, 0)
 }
 
-// This one is useful enough to leave here; for now, just as a comment.
-/*
-func arcToPath(arc geometry.Arc) string {
-	// Arc path format:
-	// A rx ry x-axis-rotation large-arc-flag sweep-flag x y
-
-	radius := arc.Start.Distance(arc.Center) * bounds.scale
-
-	sweepFlag := 0
-	if arc.Clockwise {
-		sweepFlag = 1
-	}
-
-	largeFlag := 0
-	crossProduct := arc.Start.Minus(arc.Center).CrossProductZ(arc.End.Minus(arc.Center))
-	if (crossProduct > 1) == arc.Clockwise {
-		largeFlag = 1
-	}
-
-	// using super hack here! TODO: get rid of this hack.
-	bounds.lastMsg = fmt.Sprintf("cp=%f, clockwise=%t, sweep=%d, large=%d", crossProduct, arc.Clockwise, sweepFlag, largeFlag)
-
-	return fmt.Sprintf(" M %f %f A %f %f 0 %d %d %f %f ",
-		bounds.transformX(arc.Start.X), bounds.transformY(arc.Start.Y),
-		radius, radius, largeFlag, sweepFlag,
-		bounds.transformX(arc.End.X), bounds.transformY(arc.End.Y),
-	)
-}*/
-
 // goCleanPlans is the main entry point to cleanplans from JavaScript.
 func goCleanPlans(this js.Value, args []js.Value) any {
 	image := args[0]
@@ -78,7 +49,7 @@ func goCleanPlans(this js.Value, args []js.Value) any {
 	ci := vectorize.PDFJSImageToColorImage(data, width, height, bitsPerPixel)
 	fmt.Printf("Created ColorImage %p, data=%p, width=%d, height=%d\n", ci, ci.Data, ci.Width, ci.Height)
 
-	if ci.Width <= 100 && ci.Height <= 100 {
+	if ci.Width < 100 && ci.Height < 100 {
 		// For debugging, output an image that can be fed into tests
 		str := "makeImage(\n"
 		for y := 0; y < ci.Height; y++ {

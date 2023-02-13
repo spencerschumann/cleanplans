@@ -420,7 +420,7 @@ func Vectorize(img *ColorImage) string {
 		wAvg := wSum / count
 		if wAvg*1.5 < count {
 			line = blob.ToPolyline()
-			arc = blob.BestFitArc()
+			//arc = blob.BestFitArc()
 			//circle = blob.BestFitCircle()
 		}
 

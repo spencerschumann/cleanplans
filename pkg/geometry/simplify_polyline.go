@@ -120,7 +120,7 @@ func (p Point) Scale(f float64) Point {
 
 // Distance returns the distance between a point and a line segment.
 func (s LineSegment) Distance(p Point) float64 {
-	if s.A.X == s.B.X {
+	/*if s.A.X == s.B.X {
 		return math.Abs(p.X - s.A.X)
 	}
 	if s.A.Y == s.B.Y {
@@ -129,7 +129,36 @@ func (s LineSegment) Distance(p Point) float64 {
 	slope := (s.B.Y - s.A.Y) / (s.B.X - s.A.X)
 	intercept := s.A.Y - slope*s.A.X
 	// TODO: wait, is this right?
-	return math.Abs(slope*p.X-p.Y+intercept) / math.Sqrt(slope*slope+1)
+	return math.Abs(slope*p.X-p.Y+intercept) / math.Sqrt(slope*slope+1)*/
+
+	// New approach, skip the above method, and do this instead.
+
+	// Line equation, in form ax + by + c = 0
+	// (y1 – y2)x + (x2 – x1)y + (x1y2 – x2y1) = 0
+
+	// Distance to line:
+	// abs(a*x0 + b*y0 + c) / sqrt(a^2 + b^2)
+
+	/*a := s.A.Y - s.B.Y
+	b := s.A.X - s.B.X
+	c := s.A.X*s.B.Y - s.B.X*s.A.Y
+
+	d := math.Abs(a*p.X+b*p.Y+c) / math.Hypot(a, b)
+	return d*/
+
+	AP := p.Minus(s.A)
+	AB := s.A.Minus(s.B)
+	mAP := AP.Magnitude()
+	mBP := p.Minus(s.B).Magnitude()
+	mAB := AB.Magnitude()
+
+	if mAP > mAB || mBP > mAB {
+		// closest point on line is outside segment boundaries, so the closest point
+		// is the nearest of the two endpoints.
+		return math.Min(mAP, mBP)
+	}
+
+	return math.Abs(AP.CrossProductZ(AB)) / mAB
 }
 
 // For DistanceToLine and DistanceToCircle, making the line or circle the receiver

@@ -151,6 +151,81 @@ func (blob *Blob) BestFitCircle() geometry.Circle {
 	}
 }
 
+func (blob *Blob) LineFitAcceptable(p1, p2 geometry.Point) bool {
+	width := 0.0
+	for _, run := range blob.Runs {
+		width += run.X2 - run.X1
+	}
+	width /= float64(len(blob.Runs)) * 2
+
+	//fmt.Printf("Line: %v-%v, width/2: %f\n", p1, p2, width)
+
+	// adjust width (horizontal run length) based on slope of line
+	// This may be useful, but for now I'll just use the width as-is.
+	/*
+		width /= 2
+		ray := p2.Minus(p1)
+		width = math.Abs(geometry.Point{X: width}.CrossProductZ(ray)) / ray.Magnitude()
+	*/
+
+	sumExtra := func(a, b float64) float64 {
+		if b <= a {
+			return 0
+		}
+		// integrate function y=x-w, from x=a to x=b
+		extra := math.Abs((b*b/2 - width*b) - (a*a/2 - width*a))
+		//fmt.Printf("    extra %f from x=%f to x=%f\n", extra, a, b)
+		return extra / 5
+	}
+
+	sumMissing := func(a, b float64) float64 {
+		missing := math.Max(0, b-a)
+		// if missing > 0 {
+		// 	fmt.Printf("    missing %f from x=%f to x=%f\n", missing, a, b)
+		// }
+		return missing / 3
+	}
+
+	// Line equation: ax + by + c = 0
+	a := p1.Y - p2.Y
+	b := p2.X - p1.X
+	c := p1.X*p2.Y - p2.X*p1.Y
+
+	error := 0.0
+	xError := 0.0
+	for _, run := range blob.Runs {
+		y := run.Y + 0.5
+		// substitute y into line equation and solve for x:
+		//   x = (-by - c) / a
+		x := (-b*y - c) / a
+
+		// How much of the run lies within width of x? Expected x from e1 to e2, run x adjusted to center on x, from r1 to r2.
+		e1 := -width
+		e2 := width
+		r1 := run.X1 - x
+		r2 := run.X2 - x
+		mid := (run.X1 + run.X2) / 2
+		xError += x - mid
+		//fmt.Printf("  run %v, x=%f, x-delta=%f, e1=%f, e2=%f, r1=%f, r2=%f\n", run, x, math.Abs(x-mid), e1, e2, r1, r2)
+		if math.Abs(mid-x) < 1 && math.Abs(r1-e1) < 3 && math.Abs(r2-e2) < 3 {
+			// consider these runs to be equivalent - no error
+			// TODO: make threshold configurable?
+			// TODO: also track overall midpoint drift? For example, a perfect vertical line that's shifted 0.49 pixels to the right should show an error.
+			//fmt.Println("   No error")
+		} else {
+			error += sumMissing(e1, math.Min(e2, r1))
+			error += sumMissing(math.Max(e1, r2), e2)
+			error += sumExtra(r1, math.Min(r2, e1))
+			error += sumExtra(math.Max(r1, e2), r2)
+		}
+	}
+
+	//fmt.Printf("  total error: %f, xError: %f\n", error, xError)
+
+	// TODO: configurable threshold, and should it depend on width and/or length of line?
+	return error < 10.0 && math.Abs(xError) < (.01*float64(len(blob.Runs)))
+}
+
 func (blob *Blob) ToPolyline() geometry.Polyline {
 	// use linear regression to find the best-fit line to the blob
 	n := 0.0
@@ -190,24 +265,29 @@ func (blob *Blob) ToPolyline() geometry.Polyline {
 	var line geometry.Polyline
 	betaDenominatorX := n*Sxx - Sx*Sx
 	betaDenominatorY := n*Syy - Sy*Sy
+	var p1, p2 geometry.Point
 	if betaDenominatorY < betaDenominatorX {
 		// mostly horizontal line
 		betaNumerator := n*Sxy - Sx*Sy
 		beta := betaNumerator / betaDenominatorX
 		alpha := Sy/n - beta*Sx/n
-		line = geometry.Polyline{
-			{X: minX, Y: alpha + beta*minX},
-			{X: maxX, Y: alpha + beta*maxX},
-		}
+		p1 = geometry.Point{X: minX, Y: alpha + beta*minX}
+		p2 = geometry.Point{X: maxX, Y: alpha + beta*maxX}
 	} else {
 		// mostly vertical line
 		betaNumerator := n*Sxy - Sx*Sy
 		beta := betaNumerator / betaDenominatorY
 		alpha := Sx/n - beta*Sy/n
-		line = geometry.Polyline{
-			{Y: minY, X: alpha + beta*minY},
-			{Y: maxY, X: alpha + beta*maxY},
-		}
+		p1 = geometry.Point{Y: minY, X: alpha + beta*minY}
+		p2 = geometry.Point{Y: maxY, X: alpha + beta*maxY}
+	}
+
+	// Is this a good fit? If so, return this line.
+	if blob.LineFitAcceptable(p1, p2) {
+		line = geometry.Polyline{p1, p2}
+	} else {
+		// TODO: If not, find the "best" split point (or points?) and recurse
+		line = nil
 	}
 
 	if blob.Transposed {
