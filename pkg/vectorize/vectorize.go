@@ -408,18 +408,18 @@ func Vectorize(img *ColorImage) string {
 		//clearHorizontalRuns(img, blob)
 
 		outline := blob.Outline(0.2)
-		var line geometry.Polyline
 		var arc geometry.Arc
 		//var circle geometry.Circle
 
 		wSum := 0.0
+		var polyline geometry.Polyline
 		for _, run := range blob.Runs {
 			wSum += run.X2 - run.X1
 		}
 		count := float64(len(blob.Runs))
 		wAvg := wSum / count
 		if wAvg*1.5 < count {
-			line = blob.ToPolyline()
+			polyline = blob.ToPolyline()
 			//arc = blob.BestFitArc()
 			//circle = blob.BestFitCircle()
 		}
@@ -439,9 +439,8 @@ func Vectorize(img *ColorImage) string {
 			arcPathNode.D += arcToPath(arc)
 			//addCircle(circle)
 		}
-		if len(line) > 0 {
-			addLine(line)
-		}
+		addLine(polyline)
+
 		/*if circle.Radius > 30 {
 			break
 		}*/

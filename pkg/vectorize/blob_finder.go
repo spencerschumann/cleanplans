@@ -2,7 +2,9 @@ package vectorize
 
 import (
 	"cleanplans/pkg/geometry"
+	"fmt"
 	"math"
+	"sort"
 )
 
 // Run is a horizontal set of adjacent, same-colored pixels.
@@ -151,12 +153,13 @@ func (blob *Blob) BestFitCircle() geometry.Circle {
 	}
 }
 
-func (blob *Blob) LineFitAcceptable(p1, p2 geometry.Point) bool {
+func LineFitAcceptable(runs []*Run, line geometry.LineSegment) bool {
 	width := 0.0
-	for _, run := range blob.Runs {
+	for _, run := range runs {
 		width += run.X2 - run.X1
 	}
-	width /= float64(len(blob.Runs)) * 2
+	count := float64(len(runs))
+	width /= count * 2
 
 	//fmt.Printf("Line: %v-%v, width/2: %f\n", p1, p2, width)
 
@@ -187,13 +190,14 @@ func (blob *Blob) LineFitAcceptable(p1, p2 geometry.Point) bool {
 	}
 
 	// Line equation: ax + by + c = 0
-	a := p1.Y - p2.Y
-	b := p2.X - p1.X
-	c := p1.X*p2.Y - p2.X*p1.Y
+	a := line.A.Y - line.B.Y
+	b := line.B.X - line.A.X
+	c := line.A.X*line.B.Y - line.B.X*line.A.Y
 
 	error := 0.0
 	xError := 0.0
-	for _, run := range blob.Runs {
+	xAvgError := 0.0
+	for _, run := range runs {
 		y := run.Y + 0.5
 		// substitute y into line equation and solve for x:
 		//   x = (-by - c) / a
@@ -205,9 +209,10 @@ func (blob *Blob) LineFitAcceptable(p1, p2 geometry.Point) bool {
 		r1 := run.X1 - x
 		r2 := run.X2 - x
 		mid := (run.X1 + run.X2) / 2
-		xError += x - mid
+		xAvgError += x - mid
+		xError += math.Abs(x - mid)
 		//fmt.Printf("  run %v, x=%f, x-delta=%f, e1=%f, e2=%f, r1=%f, r2=%f\n", run, x, math.Abs(x-mid), e1, e2, r1, r2)
-		if math.Abs(mid-x) < 1 && math.Abs(r1-e1) < 3 && math.Abs(r2-e2) < 3 {
+		if math.Abs(mid-x) < .5 && math.Abs(r1-e1) < 1 && math.Abs(r2-e2) < 1 {
 			// consider these runs to be equivalent - no error
 			// TODO: make threshold configurable?
 			// TODO: also track overall midpoint drift? For example, a perfect vertical line that's shifted 0.49 pixels to the right should show an error.
@@ -220,13 +225,14 @@ func (blob *Blob) LineFitAcceptable(p1, p2 geometry.Point) bool {
 		}
 	}
 
-	//fmt.Printf("  total error: %f, xError: %f\n", error, xError)
+	//fmt.Printf("  total error: %f, xError/count: %f, xAvgError/count: %f\n", error, xError/count, xAvgError/count)
 
 	// TODO: configurable threshold, and should it depend on width and/or length of line?
-	return error < 10.0 && math.Abs(xError) < (.01*float64(len(blob.Runs)))
+	//return error < 1.0+0.02*math.Sqrt(count) && math.Abs(xAvgError) < .01*math.Sqrt(count) && xError < 0.2*math.Sqrt(count)
+	return error < 1.0 && math.Abs(xAvgError) < 0.3 //&& xError <
 }
 
-func (blob *Blob) ToPolyline() geometry.Polyline {
+func ToLineSegment(runs []*Run) geometry.LineSegment {
 	// use linear regression to find the best-fit line to the blob
 	n := 0.0
 	Sx := 0.0
@@ -238,7 +244,7 @@ func (blob *Blob) ToPolyline() geometry.Polyline {
 	maxX := math.Inf(-1)
 	minY := math.Inf(+1)
 	maxY := math.Inf(-1)
-	for _, run := range blob.Runs {
+	for _, run := range runs {
 		y := run.Y + 0.5
 		width := run.X2 - run.X1
 		n += width
@@ -262,11 +268,10 @@ func (blob *Blob) ToPolyline() geometry.Polyline {
 		maxY = math.Max(maxY, y)
 	}
 
-	var line geometry.Polyline
 	betaDenominatorX := n*Sxx - Sx*Sx
 	betaDenominatorY := n*Syy - Sy*Sy
 	var p1, p2 geometry.Point
-	if betaDenominatorY < betaDenominatorX {
+	if false && betaDenominatorY < betaDenominatorX {
 		// mostly horizontal line
 		betaNumerator := n*Sxy - Sx*Sy
 		beta := betaNumerator / betaDenominatorX
@@ -281,22 +286,144 @@ func (blob *Blob) ToPolyline() geometry.Polyline {
 		p1 = geometry.Point{Y: minY, X: alpha + beta*minY}
 		p2 = geometry.Point{Y: maxY, X: alpha + beta*maxY}
 	}
+	return geometry.LineSegment{A: p1, B: p2}
+}
 
-	// Is this a good fit? If so, return this line.
-	if blob.LineFitAcceptable(p1, p2) {
-		line = geometry.Polyline{p1, p2}
-	} else {
-		// TODO: If not, find the "best" split point (or points?) and recurse
-		line = nil
+func findSplit(runs []*Run) int {
+	// First choice: try to find a corner directly.
+	min := math.Inf(+1)
+	max := math.Inf(-1)
+	firstMin := 0
+	lastMin := 0
+	minRunning := false
+	firstMax := 0
+	lastMax := 0
+	maxRunning := false
+	totalWidth := 0.0
+	for i, run := range runs {
+		if run.X1 < min {
+			min = run.X1
+			firstMin = i
+			lastMin = i
+			minRunning = true
+		} else if minRunning && run.X1 == min {
+			lastMin = i
+		} else {
+			minRunning = false
+		}
+		if max < run.X2 {
+			max = run.X2
+			firstMax = i
+			lastMax = i
+			maxRunning = true
+		} else if maxRunning && max == run.X2 {
+			lastMax = i
+		} else {
+			maxRunning = false
+		}
+		totalWidth += run.X2 - run.X1
+		//fmt.Printf(">run=%+v, min=%f max=%f firstMin=%d lastMin=%d firstMax=%d lastMax=%d\n",
+		//	run, min, max, firstMin, lastMin, firstMax, lastMax)
+	}
+	width := int(totalWidth / float64(len(runs)))
+	//fmt.Printf("len(runs)=%d width=%d min=%f max=%f firstMin=%d lastMin=%d firstMax=%d lastMax=%d\n",
+	//	len(runs), width, min, max, firstMin, lastMin, firstMax, lastMax)
+	// If there's a clump of max or min runs that's not too large and that's
+	// not too close to the ends, use the middle of the clump as the split point.
+	maxRun := int(math.Max(float64(width*10), float64(len(runs)/4)))
+	if width < firstMin && lastMin < len(runs)-width && (lastMin-firstMin) < maxRun {
+		fmt.Println("  *** min criteria met")
+		return (firstMin+lastMin)/2 + 1
+	}
+	if width < firstMax && lastMax < len(runs)-width && (lastMax-firstMax) < maxRun {
+		fmt.Println("  *** max criteria met")
+		return (firstMax+lastMax)/2 + 1
 	}
 
-	if blob.Transposed {
-		for i := range line {
-			p := &line[i]
-			p.X, p.Y = p.Y, p.X
+	// Binary search isn't ideal, because it searches for a line that's just _barely_,
+	// acceptable, but it does find a line that's acceptable.
+	return sort.Search(len(runs), func(i int) bool {
+		runs := runs[i:]
+		line := ToLineSegment(runs)
+		return LineFitAcceptable(runs, line)
+	})
+}
+
+func splitify(runs []*Run) []geometry.LineSegment {
+	if len(runs) < 2 {
+		return nil
+	}
+
+	line := ToLineSegment(runs)
+	// Is this a good fit? If so, return this line.
+	if LineFitAcceptable(runs, line) {
+		return []geometry.LineSegment{line}
+	}
+
+	split := findSplit(runs)
+	if split < 2 || len(runs)-2 < split {
+		// no good split found - use the remainder regardless of fit quality
+		line := ToLineSegment(runs)
+		//fmt.Printf("Fallback to remainder, runs=%+v, line=%v\n", remaining, line)
+		return []geometry.LineSegment{line}
+	}
+
+	// recurse for each half, instead of taking this one as good directly.
+	return append(
+		splitify(runs[:split]),
+		splitify(runs[split:])...,
+	)
+}
+
+func intersection(a, b geometry.LineSegment) geometry.Point {
+	// see https://en.wikipedia.org/wiki/Line%E2%80%93line_intersection
+	x1, y1 := a.A.X, a.A.Y
+	x2, y2 := a.B.X, a.B.Y
+	x3, y3 := b.A.X, b.A.Y
+	x4, y4 := b.B.X, b.B.Y
+	pXNum := (x1*y2-y1*x2)*(x3-x4) - (x1-x2)*(x3*y4-y3*x4)
+	pYNum := (x1*y2-y1*x2)*(y3-y4) - (y1-y2)*(x3*y4-y3*x4)
+	denominator := (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4)
+	return geometry.Point{
+		X: pXNum / denominator,
+		Y: pYNum / denominator,
+	}
+}
+
+func conjoin(segs []geometry.LineSegment) geometry.Polyline {
+	if len(segs) == 0 {
+		return nil
+	}
+	polyline := geometry.Polyline{segs[0].A}
+	for i := 0; i < len(segs)-1; i++ {
+		prev := segs[i]
+		next := segs[i+1]
+		isect := intersection(prev, next)
+		d := prev.B.Distance(next.A)
+		ip := prev.A.Distance(isect)
+		in := next.A.Distance(isect)
+		if in < d*2 && ip < d*2 {
+			polyline = append(polyline, isect)
+		} else {
+			// The intersection either doesn't exist or is too far away.
+			// TODO: be more sophisticated. For now just average the points.
+			polyline = append(polyline, prev.B.Add(next.A).Scale(0.5))
 		}
 	}
-	return line
+	polyline = append(polyline, segs[len(segs)-1].B)
+	return polyline
+}
+
+func (blob *Blob) ToPolyline() geometry.Polyline {
+	segs := splitify(blob.Runs[:])
+	polyline := conjoin(segs)
+	if blob.Transposed {
+		for i := range polyline {
+			point := &polyline[i]
+			point.X, point.Y = point.Y, point.X
+		}
+	}
+	return polyline
 }
 
 type BlobFinder struct {
@@ -513,7 +640,7 @@ func (bf *BlobFinder) Blobs() []*Blob {
 	// Further calls to NextY or AddRun are undefined.
 	bf.buckets = nil
 
-	//bf.splitBlobs()
+	bf.splitBlobs()
 
 	// TODO: maybe there was no need to put blobs in a map like this...we'll see.
 	var blobs []*Blob
