@@ -399,31 +399,37 @@ func conjoin(segs []geometry.LineSegment) geometry.Polyline {
 		prev := segs[i]
 		next := segs[i+1]
 		isect := intersection(prev, next)
-		d := prev.B.Distance(next.A)
-		ip := prev.A.Distance(isect)
-		in := next.A.Distance(isect)
-		if in < d*2 && ip < d*2 {
+		dpn := math.Max(2, prev.B.Distance(next.A))
+		dpbi := prev.B.Distance(isect)
+		dpai := prev.A.Distance(isect)
+		dnai := next.A.Distance(isect)
+		dnbi := next.B.Distance(isect)
+		if dnai < dpn*10 && dpbi < dpn*10 && dpbi < dpai && dnai < dnbi {
 			polyline = append(polyline, isect)
 		} else {
 			// The intersection either doesn't exist or is too far away.
 			// TODO: be more sophisticated. For now just average the points.
-			polyline = append(polyline, prev.B.Add(next.A).Scale(0.5))
+			delta := next.A.Minus(prev.B)
+			ratio := next.Length() / (prev.Length() + next.Length())
+			p := prev.B.Add(delta.Scale(ratio))
+			polyline = append(polyline, p)
 		}
 	}
 	polyline = append(polyline, segs[len(segs)-1].B)
 	return polyline
 }
 
-func (blob *Blob) ToPolyline() geometry.Polyline {
+func (blob *Blob) ToPolyline() (geometry.Polyline, []geometry.LineSegment) {
 	segs := splitify(blob.Runs[:])
-	polyline := conjoin(segs)
 	if blob.Transposed {
-		for i := range polyline {
-			point := &polyline[i]
-			point.X, point.Y = point.Y, point.X
+		for i := range segs {
+			seg := &segs[i]
+			seg.A.X, seg.A.Y = seg.A.Y, seg.A.X
+			seg.B.X, seg.B.Y = seg.B.Y, seg.B.X
 		}
 	}
-	return polyline
+	polyline := conjoin(segs)
+	return polyline, segs
 }
 
 type BlobFinder struct {

@@ -118,6 +118,10 @@ func (p Point) Scale(f float64) Point {
 	return Point{X: p.X * f, Y: p.Y * f}
 }
 
+func (s LineSegment) Length() float64 {
+	return s.A.Distance(s.B)
+}
+
 // Distance returns the distance between a point and a line segment.
 func (s LineSegment) Distance(p Point) float64 {
 	/*if s.A.X == s.B.X {

@@ -235,6 +235,11 @@ func reverse[T any](input []T) {
 }
 
 func Vectorize(img *ColorImage) string {
+	segPathNode := cleaner.SVGXMLNode{
+		XMLName:  xml.Name{Local: "path"},
+		Styles:   "fill:none;stroke:#00aa00;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
+		Category: cleaner.CategoryFullCut,
+	}
 	linePathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
 		Styles:   "fill:none;stroke:#aa0000;stroke-width:.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
@@ -263,6 +268,7 @@ func Vectorize(img *ColorImage) string {
 	svg := cleaner.SVGXMLNode{
 		XMLName: xml.Name{Local: "svg"},
 		Children: []*cleaner.SVGXMLNode{
+			&segPathNode,
 			&linePathNode,
 			&blobPathNode,
 			&transposedBlobPathNode,
@@ -324,6 +330,9 @@ func Vectorize(img *ColorImage) string {
 	}
 	addLine := func(line geometry.Polyline) {
 		addLineTo(line, &linePathNode)
+	}
+	addSegLine := func(seg geometry.LineSegment) {
+		addLineTo(geometry.Polyline{seg.A, seg.B}, &segPathNode)
 	}
 	addRectLine := func(line geometry.Polyline) {
 		addLineTo(line, &rectPathNode)
@@ -413,13 +422,14 @@ func Vectorize(img *ColorImage) string {
 
 		wSum := 0.0
 		var polyline geometry.Polyline
+		var segs []geometry.LineSegment
 		for _, run := range blob.Runs {
 			wSum += run.X2 - run.X1
 		}
 		count := float64(len(blob.Runs))
 		wAvg := wSum / count
 		if wAvg*1.5 < count {
-			polyline = blob.ToPolyline()
+			polyline, segs = blob.ToPolyline()
 			//arc = blob.BestFitArc()
 			//circle = blob.BestFitCircle()
 		}
@@ -440,6 +450,10 @@ func Vectorize(img *ColorImage) string {
 			//addCircle(circle)
 		}
 		addLine(polyline)
+
+		for _, seg := range segs {
+			addSegLine(seg)
+		}
 
 		/*if circle.Radius > 30 {
 			break
