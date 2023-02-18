@@ -2,7 +2,6 @@ package vectorize
 
 import (
 	"cleanplans/pkg/geometry"
-	"fmt"
 	"math"
 	"sort"
 )
@@ -332,11 +331,9 @@ func findSplit(runs []*Run) int {
 	// not too close to the ends, use the middle of the clump as the split point.
 	maxRun := int(math.Max(float64(width*10), float64(len(runs)/4)))
 	if width < firstMin && lastMin < len(runs)-width && (lastMin-firstMin) < maxRun {
-		fmt.Println("  *** min criteria met")
 		return (firstMin+lastMin)/2 + 1
 	}
 	if width < firstMax && lastMax < len(runs)-width && (lastMax-firstMax) < maxRun {
-		fmt.Println("  *** max criteria met")
 		return (firstMax+lastMax)/2 + 1
 	}
 

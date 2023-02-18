@@ -199,7 +199,7 @@ func trimLines(lines []Blob) []Blob {
 	return result
 }*/
 
-// This one is useful enough to leave here; for now, just as a comment.
+// arcToPath converts a geometry.Arc to an SVG path string representation.
 func arcToPath(arc geometry.Arc) string {
 	// Arc path format:
 	// A rx ry x-axis-rotation large-arc-flag sweep-flag x y
@@ -345,70 +345,90 @@ func Vectorize(img *ColorImage) string {
 	_ = addPoint
 	_ = addRectLine
 
-	bf := NewBlobFinder(10, img.Width, img.Height)
-	bf.TrackRuns = true
-	FindHorizontalRuns(img, bf)
-	blobs := bf.Blobs()
+	var hbf, vbf *BlobFinder
+	var vBlobs []*Blob
+	var unusedRuns []map[*Run]struct{}
+	for i := 0; i <= img.Height; i++ {
+		unusedRuns = append(unusedRuns, map[*Run]struct{}{})
+	}
+	// this function obviously and definitely needs to be refactored and broken up. But for right now, it's convenient to have
+	// details all together here, for easy addition of debug visualization. But I've added a block here to avoid leaking excessive locals.
+	{
+		bf := NewBlobFinder(10, img.Width, img.Height)
+		bf.TrackRuns = true
+		FindHorizontalRuns(img, bf)
+		blobs := bf.Blobs()
 
-	tBlobs, connections, tRuns := Transpose(blobs, img.Width, img.Height)
-	_ = tBlobs
-	_ = connections
+		tBlobs, connections, tRuns := Transpose(blobs, img.Width, img.Height)
+		_ = tBlobs
+		_ = connections
 
-	// Colorize based on shortest run direction
-	for _, blob := range blobs {
-		for _, run := range blob.Runs {
-			width := run.X2 - run.X1
-			for x := int(run.X1); x < int(run.X2); x++ {
-				tRow := tRuns[x]
-				ti := sort.Search(len(tRow), func(i int) bool {
-					return run.Y <= tRow[i].X2
-				})
-				tRun := tRow[ti]
-				tWidth := tRun.X2 - tRun.X1
+		// Colorize based on shortest run direction
+		for _, blob := range blobs {
+			for _, run := range blob.Runs {
+				width := run.X2 - run.X1
+				for x := int(run.X1); x < int(run.X2); x++ {
+					tRow := tRuns[x]
+					ti := sort.Search(len(tRow), func(i int) bool {
+						return run.Y <= tRow[i].X2
+					})
+					tRun := tRow[ti]
+					tWidth := tRun.X2 - tRun.X1
 
-				if tWidth <= width {
-					run.Eclipsed = true
-				}
-				if width <= tWidth {
-					tRun.Eclipsed = true
-				}
+					if tWidth <= width {
+						run.Eclipsed = true
+						y := int(run.Y)
+						unusedRuns[y][run] = struct{}{}
+					}
+					if width <= tWidth {
+						tRun.Eclipsed = true
+					}
 
-				ii := 0
-				if blob.Transposed {
-					ii = int(run.Y) + x*img.Width
-				} else {
-					ii = x + int(run.Y)*img.Width
-				}
-				if tWidth < width {
-					img.Data[ii] = color.LightPurple
-				} else if width < tWidth {
-					img.Data[ii] = color.LightGray
+					ii := 0
+					if blob.Transposed {
+						ii = int(run.Y) + x*img.Width
+					} else {
+						ii = x + int(run.Y)*img.Width
+					}
+					if tWidth < width {
+						img.Data[ii] = color.LightPurple
+					} else if width < tWidth {
+						img.Data[ii] = color.LightGray
+					}
 				}
 			}
 		}
-	}
 
-	hbf := NewBlobFinder(10, img.Width, img.Height)
-	for _, row := range bf.Runs {
-		for _, run := range row {
-			if !run.Eclipsed {
-				hbf.AddRun(run.X1, run.X2) // TODO: pass run to AddRun instead?
+		hbf = NewBlobFinder(10, img.Width, img.Height)
+		//hbf.TrackRuns = true // TODO: do I ever end up setting this to false?
+		for _, row := range bf.Runs {
+			for _, run := range row {
+				if !run.Eclipsed {
+					hbf.AddRun(run.X1, run.X2) // TODO: pass a Run struct to AddRun instead?
+				}
+			}
+			hbf.NextY()
+		}
+		vbf = NewBlobFinder(10, img.Height, img.Width)
+		for _, row := range tRuns {
+			for _, tRun := range row {
+				if !tRun.Eclipsed {
+					vbf.AddRun(tRun.X1, tRun.X2)
+				}
+			}
+			vbf.NextY()
+		}
+		vBlobs = vbf.Blobs()
+		for _, blob := range vbf.Blobs() {
+			blob.Transposed = true
+		}
+
+		// Reset all eclipsed flags
+		for _, row := range append(hbf.Runs, vbf.Runs...) {
+			for _, run := range row {
+				run.Eclipsed = false
 			}
 		}
-		hbf.NextY()
-	}
-	vbf := NewBlobFinder(10, img.Height, img.Width)
-	for _, row := range tRuns {
-		for _, tRun := range row {
-			if !tRun.Eclipsed {
-				vbf.AddRun(tRun.X1, tRun.X2)
-			}
-		}
-		vbf.NextY()
-	}
-	vBlobs := vbf.Blobs()
-	for _, blob := range vBlobs {
-		blob.Transposed = true
 	}
 
 	for _, blob := range append(hbf.Blobs(), vBlobs...) {
@@ -428,21 +448,36 @@ func Vectorize(img *ColorImage) string {
 		}
 		count := float64(len(blob.Runs))
 		wAvg := wSum / count
-		if wAvg*1.5 < count {
+		used := false
+		if wAvg*1.1 < count {
 			polyline, segs = blob.ToPolyline()
 			//arc = blob.BestFitArc()
 			//circle = blob.BestFitCircle()
+
+			if len(polyline) > 0 {
+				// a line was generated; mark these runs as used
+				for _, run := range blob.Runs {
+					run.Eclipsed = true
+				}
+				used = true
+			}
 		}
 
-		if blob.Transposed {
-			for i := range outline {
-				p := &outline[i]
-				p.X, p.Y = p.Y, p.X
+		if used {
+			if blob.Transposed {
+				for i := range outline {
+					p := &outline[i]
+					p.X, p.Y = p.Y, p.X
+				}
+				addTransposedBlobOutline(outline)
+			} else {
+				addBlobOutline(outline)
 			}
-			addTransposedBlobOutline(outline)
-		} else {
-			addBlobOutline(outline)
-
+		} else if !blob.Transposed {
+			// Make note of additional unused horizontal runs
+			for _, run := range blob.Runs {
+				unusedRuns[int(run.Y)][run] = struct{}{}
+			}
 		}
 
 		if (arc != geometry.Arc{}) {
@@ -454,11 +489,100 @@ func Vectorize(img *ColorImage) string {
 		for _, seg := range segs {
 			addSegLine(seg)
 		}
-
-		/*if circle.Radius > 30 {
-			break
-		}*/
 	}
+
+	// Take the unused horizontal runs as a baseline for the remainder.
+	// Then take the eclipsed vertical runs and transpose them, to find
+	// the set of corresponding horizontal runs that were eclipsed from the vertical
+	// set. Note that these runs may overlap actual horizontal runs only partially.
+	// Then, subtract the transposed vertical eclipsed runs from the unused
+	// horizontal runs.
+	{
+		// Sort unused horizontal runs
+		hRuns := make([][]*Run, img.Height+1)
+		for y, row := range unusedRuns {
+			for run := range row {
+				hRuns[y] = append(hRuns[y], run)
+			}
+			sort.Slice(hRuns[y], func(i, j int) bool {
+				return hRuns[y][i].X1 < hRuns[y][j].X1
+			})
+			/*for _, run := range hRuns[y] {
+				fmt.Println("Unused run:", run)
+			}*/
+		}
+
+		// Get eclipsed vertical blobs
+		var evBlobs []*Blob
+		for _, blob := range vBlobs {
+			if blob.Runs[0].Eclipsed {
+				evBlobs = append(evBlobs, blob)
+			}
+		}
+
+		// TODO: not needing tBlobs here, computation for them is wasted. Need to refactor Transpose() for this use case.
+		_, _, hvRuns := Transpose(evBlobs, img.Height, img.Width)
+
+		/*for y := range hvRuns {
+			for _, run := range hvRuns[y] {
+				fmt.Println("Transposed used vertical run:", run)
+			}
+		}*/
+
+		// Subtract hvRuns out of hRuns
+		// First, a length check - should match
+		if len(hvRuns) != len(hRuns) {
+			fmt.Printf("len(hRuns)=%d, len(hvRuns)=%d\n", len(hRuns), len(hvRuns))
+			panic("hvRuns length != hRuns length")
+		}
+		bf := NewBlobFinder(10, img.Width, img.Height)
+		for i := range hRuns {
+			uRow := hRuns[i]
+			hvRow := hvRuns[i]
+			hvi := 0
+			for _, run := range uRow {
+				// scan forward to the next hvi that could overlap this run
+				for run.X1 < run.X2 {
+					for hvi < len(hvRow) && hvRow[hvi].X2 <= run.X1 {
+						hvi++
+					}
+					if hvi < len(hvRow) {
+						hvRun := hvRow[hvi]
+						//fmt.Println("run=", run, "hvrun=", hvRun)
+						if run.X2 <= hvRun.X1 {
+							// no overlap
+							//fmt.Println("  no overlap, add full run", run)
+							bf.AddRun(run.X1, run.X2)
+							break
+						} else {
+							// add first chunk of run, if it exists
+							if run.X1 < hvRun.X1 {
+								//fmt.Println("  overlap, add", run.X1, "to", hvRun.X1)
+								bf.AddRun(run.X1, hvRun.X1)
+								// mark this chunk used
+								run.X1 = hvRun.X1
+							}
+							// remove overlapping portion
+							if hvRun.X2 <= run.X2 {
+								//fmt.Println("  remove chunk up to", hvRun.X2, "from run")
+								run.X1 = hvRun.X2
+							}
+						}
+					} else {
+						// no more hv runs on this row
+						//fmt.Println("  Add run", run)
+						bf.AddRun(run.X1, run.X2)
+						break
+					}
+				}
+			}
+			bf.NextY()
+		}
+		for _, blob := range bf.Blobs() {
+			addBlobOutline(blob.Outline(0.3))
+		}
+	}
+
 	svg.Children = append(svg.Children, &arcPathNode)
 
 	/*for _, c := range connections {

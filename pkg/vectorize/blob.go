@@ -105,9 +105,10 @@ func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, [][]*Run)
 		bf.NextY()
 	}
 
+	transposed := !blobs[0].Transposed
 	blobs = bf.Blobs()
 	for _, blob := range blobs {
-		blob.Transposed = true
+		blob.Transposed = transposed
 	}
 	connections := bf.Connections()
 	return blobs, connections, tRuns
