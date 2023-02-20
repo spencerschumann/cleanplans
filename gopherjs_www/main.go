@@ -9,8 +9,9 @@ import (
 	"fmt"
 	"image/png"
 	"runtime"
-	"syscall/js"
 	"time"
+
+	"github.com/gopherjs/gopherjs/js"
 )
 
 // TODO: try running this code via GopherJS. How does it compare in size and speed
@@ -25,15 +26,15 @@ func main() {
 	fmt.Println("GO MAIN CALLED!!!!!!!!!!!!")
 	funcs := []struct {
 		name string
-		fn   func(js.Value, []js.Value) any
+		fn   any
 	}{
 		{"goCleanPlans", goCleanPlans},
 	}
 	for _, fn := range funcs {
-		js.Global().Set(fn.name, js.FuncOf(fn.fn))
+		js.Global.Set(fn.name, fn.fn)
 	}
 
-	<-make(chan any, 0)
+	//<-make(chan any, 0)
 }
 
 func timeDeltaMS(t1, t2 time.Time) float64 {
@@ -41,22 +42,29 @@ func timeDeltaMS(t1, t2 time.Time) float64 {
 }
 
 // goCleanPlans is the main entry point to cleanplans from JavaScript.
-func goCleanPlans(this js.Value, args []js.Value) any {
-	image := args[0]
-	imageLen := image.Length()
-	width := args[1].Int()
-	height := args[2].Int()
-	bitsPerPixel := args[3].Int()
+func goCleanPlans(image []byte, width, height, bitsPerPixel int) any {
+	//image := args[0]
+
+	//imageLen := image.Length()
+	//width := args[1].Int()
+	//height := args[2].Int()
+	//bitsPerPixel := args[3].Int()
+	imageLen := len(image)
 	fmt.Printf("Go CleanPlans called: %d bytes, %d, %d, %d\n", imageLen, width, height, bitsPerPixel)
 
 	t1 := time.Now()
 
-	data := make([]byte, imageLen)
-	js.CopyBytesToGo(data, image)
+	/*data := make([]byte, imageLen)
+	js.CopyBytesToGo(data, image)*/
+	//fmt.Println("Image:", image.String())
+	//spew.Dump(image)
+	//data := image.Interface().([]uint8)
+	data := image
 
 	ci := vectorize.PDFJSImageToColorImage(data, width, height, bitsPerPixel)
 	t2 := time.Now()
 	fmt.Printf("Created ColorImage %p, data=%p, width=%d, height=%d\n", ci, ci.Data, ci.Width, ci.Height)
+
 	fmt.Printf("Time to run PDFJSImageToColorImage: %g\n", timeDeltaMS(t1, t2))
 
 	if ci.Width < 100 && ci.Height < 100 {
@@ -103,14 +111,14 @@ func goCleanPlans(this js.Value, args []js.Value) any {
 		return nil
 	}
 
-	u8Array := js.Global().Get("Uint8Array").New(buf.Len())
-	js.CopyBytesToJS(u8Array, buf.Bytes())
+	/*u8Array := js.Global().Get("Uint8Array").New(buf.Len())
+	js.CopyBytesToJS(u8Array, buf.Bytes())*/
 
 	t4 := time.Now()
 	fmt.Printf("Time to encode png: %g\n", timeDeltaMS(t3, t4))
 
 	return map[string]any{
-		"png": u8Array,
+		"png": buf.Bytes(),
 		"svg": svg,
 	}
 }

@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8">
-  <title>Go CleanPlans - WASM</title>
+  <title>Go CleanPlans</title>
 
   <style>
     body {
@@ -55,7 +55,7 @@
 
 <body>
   <div id="header">
-    <h1>Go CleanPlans</h1>
+    <h1>Go CleanPlans - GopherJS</h1>
     <input type="file" id="file-input" accept="application/pdf">
   </div>
   <div id="img-viewport">
@@ -64,8 +64,9 @@
     </div>
   </div>
   <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
-  <script src="wasm_exec.js"></script>
-  <script src="./bootstrap.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.3.122/pdf.min.js"></script>
+  <script src="main.js"></script>
+  <script src="index.js"></script>
 </body>
 
 </html>
