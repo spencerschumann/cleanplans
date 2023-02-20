@@ -14,6 +14,8 @@ type Run struct {
 	Eclipsed bool
 }
 
+type Runs []*Run
+
 type Connection struct {
 	A        *Blob
 	B        *Blob
@@ -24,9 +26,19 @@ type Connection struct {
 // Blob is a sequence of adjacent runs. Runs are adjacent
 // if the Y values differ by exactly 1, and the X values differ by at most 1.
 type Blob struct {
-	Runs        []*Run
+	Runs        Runs
 	Connections map[*Connection]struct{}
 	Transposed  bool
+}
+
+// AverageWidth returns the average width of the runs.
+func (runs Runs) AverageWidth() float64 {
+	wSum := 0.0
+	for _, run := range runs {
+		wSum += run.X2 - run.X1
+	}
+	count := float64(len(runs))
+	return wSum / count
 }
 
 func (blob *Blob) BestFitArc() geometry.Arc {
@@ -152,13 +164,8 @@ func (blob *Blob) BestFitCircle() geometry.Circle {
 	}
 }
 
-func LineFitAcceptable(runs []*Run, line geometry.LineSegment) bool {
-	width := 0.0
-	for _, run := range runs {
-		width += run.X2 - run.X1
-	}
-	count := float64(len(runs))
-	width /= count * 2
+func LineFitAcceptable(runs Runs, line geometry.LineSegment) bool {
+	halfWidth := runs.AverageWidth() / 2
 
 	//fmt.Printf("Line: %v-%v, width/2: %f\n", p1, p2, width)
 
@@ -175,7 +182,7 @@ func LineFitAcceptable(runs []*Run, line geometry.LineSegment) bool {
 			return 0
 		}
 		// integrate function y=x-w, from x=a to x=b
-		extra := math.Abs((b*b/2 - width*b) - (a*a/2 - width*a))
+		extra := math.Abs((b*b/2 - halfWidth*b) - (a*a/2 - halfWidth*a))
 		//fmt.Printf("    extra %f from x=%f to x=%f\n", extra, a, b)
 		return extra / 5
 	}
@@ -203,8 +210,8 @@ func LineFitAcceptable(runs []*Run, line geometry.LineSegment) bool {
 		x := (-b*y - c) / a
 
 		// How much of the run lies within width of x? Expected x from e1 to e2, run x adjusted to center on x, from r1 to r2.
-		e1 := -width
-		e2 := width
+		e1 := -halfWidth
+		e2 := halfWidth
 		r1 := run.X1 - x
 		r2 := run.X2 - x
 		mid := (run.X1 + run.X2) / 2
@@ -231,7 +238,7 @@ func LineFitAcceptable(runs []*Run, line geometry.LineSegment) bool {
 	return error < 1.0 && math.Abs(xAvgError) < 0.3 //&& xError <
 }
 
-func ToLineSegment(runs []*Run) geometry.LineSegment {
+func ToLineSegment(runs Runs) geometry.LineSegment {
 	// use linear regression to find the best-fit line to the blob
 	n := 0.0
 	Sx := 0.0
@@ -288,7 +295,7 @@ func ToLineSegment(runs []*Run) geometry.LineSegment {
 	return geometry.LineSegment{A: p1, B: p2}
 }
 
-func findSplit(runs []*Run) int {
+func findSplit(runs Runs) int {
 	// First choice: try to find a corner directly.
 	min := math.Inf(+1)
 	max := math.Inf(-1)
@@ -298,7 +305,6 @@ func findSplit(runs []*Run) int {
 	firstMax := 0
 	lastMax := 0
 	maxRunning := false
-	totalWidth := 0.0
 	for i, run := range runs {
 		if run.X1 < min {
 			min = run.X1
@@ -320,11 +326,10 @@ func findSplit(runs []*Run) int {
 		} else {
 			maxRunning = false
 		}
-		totalWidth += run.X2 - run.X1
 		//fmt.Printf(">run=%+v, min=%f max=%f firstMin=%d lastMin=%d firstMax=%d lastMax=%d\n",
 		//	run, min, max, firstMin, lastMin, firstMax, lastMax)
 	}
-	width := int(totalWidth / float64(len(runs)))
+	width := int(runs.AverageWidth())
 	//fmt.Printf("len(runs)=%d width=%d min=%f max=%f firstMin=%d lastMin=%d firstMax=%d lastMax=%d\n",
 	//	len(runs), width, min, max, firstMin, lastMin, firstMax, lastMax)
 	// If there's a clump of max or min runs that's not too large and that's
@@ -346,7 +351,7 @@ func findSplit(runs []*Run) int {
 	})
 }
 
-func splitify(runs []*Run) []geometry.LineSegment {
+func splitify(runs Runs) []geometry.LineSegment {
 	if len(runs) < 2 {
 		return nil
 	}
@@ -437,7 +442,7 @@ type BlobFinder struct {
 	prevBuckets []map[*Run]*Blob
 	blobs       map[*Blob]struct{}
 	connections map[*Connection]struct{}
-	Runs        [][]*Run
+	Runs        []Runs
 	TrackRuns   bool
 
 	//blobs *quadtree.QuadTree
@@ -454,7 +459,7 @@ func NewBlobFinder(bucketSize, maxX, maxY int) *BlobFinder {
 		numBuckets:  numBuckets,
 		blobs:       map[*Blob]struct{}{},
 		connections: map[*Connection]struct{}{},
-		Runs:        [][]*Run{{}},
+		Runs:        []Runs{{}},
 	}
 
 	// First call adds a row of buckets, second call makes another
@@ -477,7 +482,7 @@ func (bf *BlobFinder) NextY() {
 	bf.y++
 	bf.makeBuckets()
 	if bf.TrackRuns {
-		bf.Runs = append(bf.Runs, []*Run{})
+		bf.Runs = append(bf.Runs, Runs{})
 	}
 }
 

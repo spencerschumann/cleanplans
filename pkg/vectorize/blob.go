@@ -42,7 +42,7 @@ func (blob *Blob) Outline(margin float64) geometry.Polyline {
 }
 
 // Transpose flips the X/Y coordinates in the blobs, creating vertical runs from horizontal runs.
-func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, [][]*Run) {
+func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, []Runs) {
 
 	// TODO: idea, may not need to actually build blobs until later on. Instead I can
 	// use this new idea of [][]Run. I could even apply the bucketization idea for efficient
@@ -50,7 +50,7 @@ func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, [][]*Run)
 	// which to use for each pixel, and only then build up the blobs.
 	// Update: wrong, the alg used here needs the runs to have been pre-arranged into blobs.
 
-	tRuns := make([][]*Run, maxX+1)
+	tRuns := make([]Runs, maxX+1)
 
 	beginRun := func(x1, x2, y float64) {
 		for i := int(x1); i < int(x2); i++ {
@@ -88,7 +88,7 @@ func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, [][]*Run)
 			return row[i].X1 < row[j].X1
 		})
 
-		coalesced := []*Run{}
+		coalesced := Runs{}
 		j := 0
 		for j < len(row) {
 			run := row[j]

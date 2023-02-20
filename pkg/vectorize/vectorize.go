@@ -224,7 +224,13 @@ func arcToPath(arc geometry.Arc) string {
 	)
 }
 
-func reverse[T any](input []T) {
+// NOTE: this can be made generic by declaring it as:
+//
+//	reverse[T any](input []T)
+//
+// but gopherjs does not yet support generics, and this
+// minor concession is worth making for gopherjs support.
+func reverse(input geometry.Polyline) {
 	inputLen := len(input)
 	inputMid := inputLen / 2
 
@@ -440,14 +446,10 @@ func Vectorize(img *ColorImage) string {
 		var arc geometry.Arc
 		//var circle geometry.Circle
 
-		wSum := 0.0
 		var polyline geometry.Polyline
 		var segs []geometry.LineSegment
-		for _, run := range blob.Runs {
-			wSum += run.X2 - run.X1
-		}
 		count := float64(len(blob.Runs))
-		wAvg := wSum / count
+		wAvg := blob.Runs.AverageWidth()
 		used := false
 		if wAvg*1.1 < count {
 			polyline, segs = blob.ToPolyline()
@@ -580,6 +582,18 @@ func Vectorize(img *ColorImage) string {
 		}
 		for _, blob := range bf.Blobs() {
 			addBlobOutline(blob.Outline(0.3))
+
+			var polyline geometry.Polyline
+			var segs []geometry.LineSegment
+			count := float64(len(blob.Runs))
+			wAvg := blob.Runs.AverageWidth()
+			if wAvg*1.1 < count {
+				polyline, segs = blob.ToPolyline()
+				addLine(polyline)
+				for _, seg := range segs {
+					addSegLine(seg)
+				}
+			}
 		}
 	}
 
