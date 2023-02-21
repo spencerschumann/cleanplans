@@ -46,7 +46,7 @@ func (ci *ColorImage) ColorIndexAt(x, y int) uint8 {
 // PDFJSImageToColorImage converts the input image data via color.RemapColor,
 // returning a slice of color.Color values with the same width and height
 // as the input image.
-func PDFJSImageToColorImage(image []byte, width, height, bitsPerPixel int) *ColorImage {
+func PDFJSImageToColorImage(image []uint8, width, height, bitsPerPixel int) *ColorImage {
 	data := make([]color.Color, width*height)
 	j := 0
 	if bitsPerPixel == 1 {
@@ -90,7 +90,7 @@ func PDFJSImageToColorImage(image []byte, width, height, bitsPerPixel int) *Colo
 }
 
 type RunHandler interface {
-	AddRun(x1, x2 float64)
+	AddRun(run *Run)
 	NextY()
 }
 
@@ -351,23 +351,32 @@ func Vectorize(img *ColorImage) string {
 	_ = addPoint
 	_ = addRectLine
 
+	allRuns := FindAllHorizontalRuns(img)
+	for c := color.White; c <= color.LightPurple; c++ {
+		fmt.Printf("Row count for color %d: %d\n", c, len(allRuns[c]))
+	}
+
 	var hbf, vbf *BlobFinder
 	var vBlobs []*Blob
-	var unusedRuns []map[*Run]struct{}
-	for i := 0; i <= img.Height; i++ {
-		unusedRuns = append(unusedRuns, map[*Run]struct{}{})
+	unusedRuns := make([]map[*Run]struct{}, img.Height)
+	for i := 0; i < img.Height; i++ {
+		unusedRuns[i] = map[*Run]struct{}{}
 	}
 	// this function obviously and definitely needs to be refactored and broken up. But for right now, it's convenient to have
 	// details all together here, for easy addition of debug visualization. But I've added a block here to avoid leaking excessive locals.
 	{
 		bf := NewBlobFinder(10, img.Width, img.Height)
-		bf.TrackRuns = true
-		FindHorizontalRuns(img, bf)
+		//bf.TrackRuns = true
+		//FindHorizontalRuns(img, bf)
+		for _, row := range allRuns[color.Black] {
+			for _, run := range row {
+				bf.AddRun(run)
+			}
+			bf.NextY()
+		}
 		blobs := bf.Blobs()
 
-		tBlobs, connections, tRuns := Transpose(blobs, img.Width, img.Height)
-		_ = tBlobs
-		_ = connections
+		tRuns := Transpose(blobs, img.Width, img.Height)
 
 		// Colorize based on shortest run direction
 		for _, blob := range blobs {
@@ -406,11 +415,10 @@ func Vectorize(img *ColorImage) string {
 		}
 
 		hbf = NewBlobFinder(10, img.Width, img.Height)
-		//hbf.TrackRuns = true // TODO: do I ever end up setting this to false?
-		for _, row := range bf.Runs {
+		for _, row := range allRuns[color.Black] {
 			for _, run := range row {
 				if !run.Eclipsed {
-					hbf.AddRun(run.X1, run.X2) // TODO: pass a Run struct to AddRun instead?
+					hbf.AddRun(run)
 				}
 			}
 			hbf.NextY()
@@ -419,7 +427,7 @@ func Vectorize(img *ColorImage) string {
 		for _, row := range tRuns {
 			for _, tRun := range row {
 				if !tRun.Eclipsed {
-					vbf.AddRun(tRun.X1, tRun.X2)
+					vbf.AddRun(tRun)
 				}
 			}
 			vbf.NextY()
@@ -430,7 +438,7 @@ func Vectorize(img *ColorImage) string {
 		}
 
 		// Reset all eclipsed flags
-		for _, row := range append(hbf.Runs, vbf.Runs...) {
+		for _, row := range append(allRuns[color.Black], tRuns...) {
 			for _, run := range row {
 				run.Eclipsed = false
 			}
@@ -501,7 +509,7 @@ func Vectorize(img *ColorImage) string {
 	// horizontal runs.
 	{
 		// Sort unused horizontal runs
-		hRuns := make([][]*Run, img.Height+1)
+		hRuns := make([][]*Run, img.Height)
 		for y, row := range unusedRuns {
 			for run := range row {
 				hRuns[y] = append(hRuns[y], run)
@@ -523,7 +531,7 @@ func Vectorize(img *ColorImage) string {
 		}
 
 		// TODO: not needing tBlobs here, computation for them is wasted. Need to refactor Transpose() for this use case.
-		_, _, hvRuns := Transpose(evBlobs, img.Height, img.Width)
+		hvRuns := Transpose(evBlobs, img.Height, img.Width)
 
 		/*for y := range hvRuns {
 			for _, run := range hvRuns[y] {
@@ -543,6 +551,8 @@ func Vectorize(img *ColorImage) string {
 			hvRow := hvRuns[i]
 			hvi := 0
 			for _, run := range uRow {
+				// don't corrupt earlier runs, in case they're needed later
+				run := *run
 				// scan forward to the next hvi that could overlap this run
 				for run.X1 < run.X2 {
 					for hvi < len(hvRow) && hvRow[hvi].X2 <= run.X1 {
@@ -554,13 +564,15 @@ func Vectorize(img *ColorImage) string {
 						if run.X2 <= hvRun.X1 {
 							// no overlap
 							//fmt.Println("  no overlap, add full run", run)
-							bf.AddRun(run.X1, run.X2)
+							// add a snapshot of the current state of this run copy
+							run := run
+							bf.AddRun(&run)
 							break
 						} else {
 							// add first chunk of run, if it exists
 							if run.X1 < hvRun.X1 {
 								//fmt.Println("  overlap, add", run.X1, "to", hvRun.X1)
-								bf.AddRun(run.X1, hvRun.X1)
+								bf.AddRun(&Run{X1: run.X1, X2: hvRun.X1, Y: run.Y})
 								// mark this chunk used
 								run.X1 = hvRun.X1
 							}
@@ -573,13 +585,18 @@ func Vectorize(img *ColorImage) string {
 					} else {
 						// no more hv runs on this row
 						//fmt.Println("  Add run", run)
-						bf.AddRun(run.X1, run.X2)
+						// add a snapshot of the current state of this run copy
+						run := run
+						bf.AddRun(&run)
 						break
 					}
 				}
 			}
 			bf.NextY()
 		}
+		// The runs in hRuns have been modified and some have been added, so hRuns is no longer an accurate list.
+		hRuns = nil
+
 		for _, blob := range bf.Blobs() {
 			addBlobOutline(blob.Outline(0.3))
 
@@ -614,51 +631,51 @@ func Vectorize(img *ColorImage) string {
 	return string(data)
 }
 
-func checkReportRun(x, y, runStart int, runHandler RunHandler) {
-	if runStart < 0 {
-		return
-	}
-	//runLength := x - runStart
-	//if runLength <= cfg.VectorizeMaxRunLength {
-	runHandler.AddRun(float64(runStart), float64(x))
-	//}
-}
+// FindAllHorizontalRuns returns a slice of runs for every color.
+func FindAllHorizontalRuns(img *ColorImage) [][]Runs {
+	// Prepare for up to 256 colors
+	allRuns := make([][]Runs, 256)
 
-func colorOk(c color.Color) bool {
-	switch c {
-	case color.Black:
-		return true
-	case color.Blue, color.Gray, color.Green, color.Red:
-		return false
-	default:
-		return false
-	}
-}
+	checkReportRun := func(x, y, runStart int, c color.Color) {
+		if runStart < 0 {
+			return
+		}
+		i := int(c)
 
-func FindHorizontalRuns(img *ColorImage, runHandler RunHandler) {
-	// To start with, just look for white and black pixels.
-	// This will of course need to be expanded to other colors, which could be done
-	// trivially by running multiple passes of this alg, one for each color. But it
-	// is probably more efficient to look for all colors at the same time.
-	i := 0
+		if len(allRuns[i]) == 0 {
+			allRuns[i] = make([]Runs, img.Height)
+		}
+
+		allRuns[i][y] = append(allRuns[i][y], &Run{X1: float64(runStart), X2: float64(x), Y: float64(y)})
+	}
+
+	imgIndex := 0
 	for y := 0; y < img.Height; y++ {
-		runStart := -1
+		runStarts := make([]int, 256)
+		for i := range runStarts {
+			runStarts[i] = -1
+		}
+		lastColor := -1
 		for x := 0; x < img.Width; x++ {
-			c := img.Data[i]
-			i++
-			if colorOk(c) {
-				if runStart == -1 {
-					// new run
-					runStart = x
+			// TODO: in the final implementation, pixels can be fed in directly as they're
+			// decoded rather than storing them in a separate image slice.
+			c := int(img.Data[imgIndex])
+			imgIndex++
+			if lastColor != c {
+				// new color; check for finished run
+				if lastColor >= 0 {
+					checkReportRun(x, y, runStarts[lastColor], color.Color(lastColor))
+					runStarts[lastColor] = -1
 				}
-			} else {
-				// Non-black; check for finished run
-				checkReportRun(x, y, runStart, runHandler)
-				runStart = -1
+				// Start new run
+				runStarts[c] = x
 			}
+			lastColor = c
 		}
 		// check for finished run at end of row
-		checkReportRun(img.Width, y, runStart, runHandler)
-		runHandler.NextY()
+		if lastColor >= 0 {
+			checkReportRun(img.Width, y, runStarts[lastColor], color.Color(lastColor))
+		}
 	}
+	return allRuns
 }

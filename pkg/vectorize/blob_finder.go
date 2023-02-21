@@ -442,8 +442,8 @@ type BlobFinder struct {
 	prevBuckets []map[*Run]*Blob
 	blobs       map[*Blob]struct{}
 	connections map[*Connection]struct{}
-	Runs        []Runs
-	TrackRuns   bool
+	//Runs        []Runs
+	//TrackRuns   bool
 
 	//blobs *quadtree.QuadTree
 }
@@ -459,7 +459,7 @@ func NewBlobFinder(bucketSize, maxX, maxY int) *BlobFinder {
 		numBuckets:  numBuckets,
 		blobs:       map[*Blob]struct{}{},
 		connections: map[*Connection]struct{}{},
-		Runs:        []Runs{{}},
+		//Runs:        []Runs{{}},
 	}
 
 	// First call adds a row of buckets, second call makes another
@@ -481,9 +481,9 @@ func (bf *BlobFinder) makeBuckets() {
 func (bf *BlobFinder) NextY() {
 	bf.y++
 	bf.makeBuckets()
-	if bf.TrackRuns {
+	/*if bf.TrackRuns {
 		bf.Runs = append(bf.Runs, Runs{})
-	}
+	}*/
 }
 
 // overlap returns true if the two runs overlap, including diagonally
@@ -530,12 +530,11 @@ func (bf *BlobFinder) connect(a, b *Blob, location geometry.Point) {
 	bf.connections[c] = struct{}{}
 }
 
-func (bf *BlobFinder) AddRun(x1, x2 float64) {
+func (bf *BlobFinder) AddRun(run *Run) {
 	var runBlob *Blob
-	run := &Run{X1: x1, X2: x2, Y: float64(bf.y)}
-	if bf.TrackRuns {
+	/*if bf.TrackRuns {
 		bf.Runs[bf.y] = append(bf.Runs[bf.y], run)
-	}
+	}*/
 	firstBucketIdx, lastBucketIdx := bf.runBuckets(run)
 	connected := map[*Blob]bool{}
 	for i := firstBucketIdx; i <= lastBucketIdx; i++ {

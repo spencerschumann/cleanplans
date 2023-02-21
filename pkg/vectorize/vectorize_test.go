@@ -39,12 +39,12 @@ type testRun struct {
 }
 
 type testRunHandler struct {
-	addRun    func(x1, x2 float64)
+	addRun    func(run *vectorize.Run)
 	nextMinor func()
 }
 
-func (r *testRunHandler) AddRun(x1, x2 float64) {
-	r.addRun(x1, x2)
+func (r *testRunHandler) AddRun(run *vectorize.Run) {
+	r.addRun(run)
 }
 
 func (r *testRunHandler) NextY() {
@@ -60,7 +60,7 @@ func TestRunDetection(t *testing.T) {
 		i := 0
 		minor := 0
 		r := testRunHandler{
-			addRun: func(x1, x2 float64) {
+			addRun: func(run *vectorize.Run) {
 				if i >= len(expectedRuns) {
 					t.Fatalf("unexpected extra run")
 				}

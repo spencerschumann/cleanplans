@@ -42,7 +42,7 @@ func (blob *Blob) Outline(margin float64) geometry.Polyline {
 }
 
 // Transpose flips the X/Y coordinates in the blobs, creating vertical runs from horizontal runs.
-func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, []Runs) {
+func Transpose(blobs []*Blob, maxX, maxY int) []Runs {
 
 	// TODO: idea, may not need to actually build blobs until later on. Instead I can
 	// use this new idea of [][]Run. I could even apply the bucketization idea for efficient
@@ -50,11 +50,11 @@ func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, []Runs) {
 	// which to use for each pixel, and only then build up the blobs.
 	// Update: wrong, the alg used here needs the runs to have been pre-arranged into blobs.
 
-	tRuns := make([]Runs, maxX+1)
+	tempRuns := make([]Runs, maxX)
 
 	beginRun := func(x1, x2, y float64) {
 		for i := int(x1); i < int(x2); i++ {
-			tRuns[i] = append(tRuns[i], &Run{
+			tempRuns[i] = append(tempRuns[i], &Run{
 				X1: y,
 				X2: y,
 				Y:  float64(i),
@@ -64,7 +64,7 @@ func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, []Runs) {
 
 	endRun := func(x1, x2, y float64) {
 		for i := int(x1); i < int(x2); i++ {
-			tRuns[i][len(tRuns[i])-1].X2 = y
+			tempRuns[i][len(tempRuns[i])-1].X2 = y
 		}
 	}
 
@@ -82,13 +82,13 @@ func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, []Runs) {
 		endRun(lastRun.X1, lastRun.X2, lastRun.Y+1)
 	}
 
-	bf := NewBlobFinder(10, maxX, maxY)
-	for i, row := range tRuns {
+	tRuns := make([]Runs, maxX)
+	for i, row := range tempRuns {
 		sort.Slice(row, func(i, j int) bool {
 			return row[i].X1 < row[j].X1
 		})
 
-		coalesced := Runs{}
+		var coalesced Runs
 		j := 0
 		for j < len(row) {
 			run := row[j]
@@ -99,19 +99,11 @@ func Transpose(blobs []*Blob, maxX, maxY int) ([]*Blob, []*Connection, []Runs) {
 				j++
 			}
 			coalesced = append(coalesced, run)
-			bf.AddRun(run.X1, run.X2)
 		}
 		tRuns[i] = coalesced
-		bf.NextY()
 	}
 
-	transposed := !blobs[0].Transposed
-	blobs = bf.Blobs()
-	for _, blob := range blobs {
-		blob.Transposed = transposed
-	}
-	connections := bf.Connections()
-	return blobs, connections, tRuns
+	return tRuns
 }
 
 func FindMaxRect(blob *Blob) geometry.Rectangle {

@@ -1,6 +1,6 @@
 module cleanplans
 
-go 1.19
+go 1.20
 
 require (
 	github.com/asim/quadtree v0.1.0

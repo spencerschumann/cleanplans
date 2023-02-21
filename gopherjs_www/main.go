@@ -42,7 +42,7 @@ func timeDeltaMS(t1, t2 time.Time) float64 {
 }
 
 // goCleanPlans is the main entry point to cleanplans from JavaScript.
-func goCleanPlans(image []byte, width, height, bitsPerPixel int) any {
+func goCleanPlans(image []uint8, width, height, bitsPerPixel int) any {
 	//image := args[0]
 
 	//imageLen := image.Length()
@@ -64,7 +64,6 @@ func goCleanPlans(image []byte, width, height, bitsPerPixel int) any {
 	ci := vectorize.PDFJSImageToColorImage(data, width, height, bitsPerPixel)
 	t2 := time.Now()
 	fmt.Printf("Created ColorImage %p, data=%p, width=%d, height=%d\n", ci, ci.Data, ci.Width, ci.Height)
-
 	fmt.Printf("Time to run PDFJSImageToColorImage: %g\n", timeDeltaMS(t1, t2))
 
 	if ci.Width < 100 && ci.Height < 100 {

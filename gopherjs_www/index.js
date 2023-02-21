@@ -195,6 +195,7 @@ async function loadPdfFromData(data) {
                     case 3: bitsPerPixel = 32; break;
                 }
 
+                console.log('Type of image data: ', obj.data.constructor.name)
                 let result = goCleanPlans(obj.data, obj.width, obj.height, bitsPerPixel);
 
                 let end = performance.now()
