@@ -7,7 +7,7 @@ import (
 )
 
 // Outline creates a polyline that traces the outline of the blob.
-func (blob *Blob) Outline(margin float64) geometry.Polyline {
+func (blob *Blob) Outline(margin float64, transposed bool) geometry.Polyline {
 	x1, x2 := blob.Runs[0].X1, blob.Runs[0].X2
 	left := geometry.Polyline{{X: x1 + margin, Y: blob.Runs[0].Y + margin}}
 	right := geometry.Polyline{{X: x2 - margin, Y: blob.Runs[0].Y + margin}}
@@ -38,6 +38,13 @@ func (blob *Blob) Outline(margin float64) geometry.Polyline {
 	line = append(line, right...)
 	// Close the loop
 	line = append(line, line[0])
+
+	if transposed {
+		for i := range line {
+			p := &line[i]
+			p.X, p.Y = p.Y, p.X
+		}
+	}
 	return line
 }
 

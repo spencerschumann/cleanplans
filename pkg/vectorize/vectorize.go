@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"image"
 	imgcolor "image/color"
+	"math"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // Terrible name...if this works, I need to change names to avoid collisions with the standard Go image and color packages.
@@ -240,7 +242,21 @@ func reverse(input geometry.Polyline) {
 	}
 }
 
+func timeDeltaMS(t1, t2 time.Time) float64 {
+	return float64(t2.Sub(t1)) / float64(time.Millisecond)
+}
+
+var _checkpoint_lastTime time.Time
+
+func checkpoint(msg string) {
+	now := time.Now()
+	fmt.Printf("Time for %s: %gms\n", msg, timeDeltaMS(_checkpoint_lastTime, now))
+	_checkpoint_lastTime = now
+}
+
 func Vectorize(img *ColorImage) string {
+	_checkpoint_lastTime = time.Now()
+
 	segPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
 		Styles:   "fill:none;stroke:#00aa00;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
@@ -261,6 +277,21 @@ func Vectorize(img *ColorImage) string {
 		Styles:   "fill:#000000;fill-opacity:0.3;stroke:#ee0000;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
 		Category: cleaner.CategoryFullCut,
 	}
+	verticalMarginPathNode := cleaner.SVGXMLNode{
+		XMLName:  xml.Name{Local: "path"},
+		Styles:   "fill:#dddddd;fill-opacity:0.8;stroke:#ee0000;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
+		Category: cleaner.CategoryFullCut,
+	}
+	horizontalMarginPathNode := cleaner.SVGXMLNode{
+		XMLName:  xml.Name{Local: "path"},
+		Styles:   "fill:#000000;fill-opacity:0.3;stroke:#ee0000;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
+		Category: cleaner.CategoryFullCut,
+	}
+	marginIntersectionPathNode := cleaner.SVGXMLNode{
+		XMLName:  xml.Name{Local: "path"},
+		Styles:   "fill:#ff0000;fill-opacity:0.3;stroke:#00ee00;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
+		Category: cleaner.CategoryFullCut,
+	}
 	transposedBlobPathNode := cleaner.SVGXMLNode{
 		XMLName:  xml.Name{Local: "path"},
 		Styles:   "fill:#000033;fill-opacity:0.2;stroke:#00aaaa;stroke-width:.1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1",
@@ -278,6 +309,9 @@ func Vectorize(img *ColorImage) string {
 			&linePathNode,
 			&blobPathNode,
 			&transposedBlobPathNode,
+			&verticalMarginPathNode,
+			&horizontalMarginPathNode,
+			&marginIntersectionPathNode,
 			&rectPathNode,
 		},
 
@@ -328,11 +362,8 @@ func Vectorize(img *ColorImage) string {
 		}
 		node.Path = append(node.Path, &path)
 	}
-	addBlobOutline := func(line geometry.Polyline) {
-		addLineTo(line, &blobPathNode)
-	}
-	addTransposedBlobOutline := func(line geometry.Polyline) {
-		addLineTo(line, &transposedBlobPathNode)
+	addBlobOutline := func(line geometry.Polyline, node *cleaner.SVGXMLNode) {
+		addLineTo(line, node)
 	}
 	addLine := func(line geometry.Polyline) {
 		addLineTo(line, &linePathNode)
@@ -347,14 +378,174 @@ func Vectorize(img *ColorImage) string {
 	// Ignore unused warnings
 	_ = addCircle
 	_ = addLine
-	_ = addTransposedBlobOutline
 	_ = addPoint
 	_ = addRectLine
 
+	checkpoint("Vectorize preamble")
 	allRuns := FindAllHorizontalRuns(img)
 	for c := color.White; c <= color.LightPurple; c++ {
 		fmt.Printf("Row count for color %d: %d\n", c, len(allRuns[c]))
 	}
+	checkpoint("FindAllHorizontalRuns")
+
+	{
+		// Try to find a clipping rectangle to ignore boilerplate - assume the
+		// content will be separated from the boilerplate by a rectangular margin.
+
+		minRatio := 0.9
+
+		// Start by finding horizontal near-rectangles
+		vMarginBF := NewBlobFinder(img.Width, img.Width, img.Height)
+		minWidth := float64(img.Width) * minRatio
+		for _, row := range allRuns[color.White] {
+			for _, run := range row {
+				width := run.X2 - run.X1
+				if width > minWidth {
+					vMarginBF.AddRun(run)
+				}
+			}
+			vMarginBF.NextY()
+		}
+		checkpoint("vMarginBF blob finder")
+
+		// for _, blob := range vMarginBF.Blobs() {
+		// 	addBlobOutline(blob.Outline(0.1, false), &verticalMarginPathNode)
+		// }
+
+		// Gather together "big enough" runs of non-background in the middle; call these the content region.
+		unblob := func(blobs []*Blob, maxY float64) Runs {
+			sort.Slice(blobs, func(i, j int) bool {
+				return blobs[i].Runs[0].Y < blobs[j].Runs[0].Y
+			})
+			var runs Runs
+			yStart := 0.0
+			for _, blob := range blobs {
+				firstY, lastY := blob.Runs[0].Y, blob.Runs[len(blob.Runs)-1].Y+1
+				//fmt.Println("firstY, lastY, yStart:", firstY, lastY, yStart)
+				if yStart < firstY {
+					runs = append(runs, &Run{X1: yStart, X2: firstY})
+				}
+				yStart = lastY
+			}
+			if yStart < maxY {
+				runs = append(runs, &Run{X1: yStart, X2: maxY})
+			}
+			return runs
+		}
+
+		coalesce := func(runs Runs, width float64) Run {
+			firstX := math.Inf(+1)
+			lastX := math.Inf(-1)
+
+			// Keep anything that's "big" or near the center
+			for _, run := range runs {
+				rw := run.X2 - run.X1
+				rc := (run.X2 + run.X1) / 2
+				if rw > width*0.1 || (width*0.2 < rc && rc < width*0.8) {
+					firstX = math.Min(firstX, run.X1)
+					lastX = math.Max(lastX, run.X2)
+				}
+			}
+
+			return Run{X1: firstX, X2: lastX}
+		}
+
+		// first scan and unblob and find the vertical content range; then transform those into blobs and transpose.
+		// This will avoid unnecessary blob processing within high-cost text areas at the top and bottom of the page.
+
+		vMarginRuns := unblob(vMarginBF.Blobs(), float64(img.Height))
+		vMarginRun := coalesce(vMarginRuns, float64(img.Height))
+		if false {
+			line := geometry.Polyline{
+				{X: 0, Y: vMarginRun.X1},
+				{X: 0, Y: vMarginRun.X2},
+				{X: float64(img.Width), Y: vMarginRun.X2},
+				{X: float64(img.Width), Y: vMarginRun.X1},
+				{X: 0, Y: vMarginRun.X1},
+			}
+			addLineTo(line, &verticalMarginPathNode)
+		}
+		checkpoint("gathering vMargin runs")
+
+		bf := NewBlobFinder(30, img.Width, img.Height)
+		for _, runs := range allRuns[color.White] {
+			if len(runs) > 0 && vMarginRun.X1 <= runs[0].Y && runs[0].Y < vMarginRun.X2 {
+				for _, run := range runs {
+					bf.AddRun(run)
+				}
+			}
+			bf.NextY()
+		}
+		checkpoint("gathering runs to transpose")
+
+		tRuns := Transpose(bf.Blobs(), img.Width, img.Height)
+		checkpoint("Transpose")
+		hMarginBF := NewBlobFinder(10, img.Height, img.Width)
+		minWidth = vMarginRun.X2 - vMarginRun.X1
+		// TODO: this is a new common pattern - need to move it to a method of BlobFinder
+		for _, row := range tRuns {
+			for _, run := range row {
+				width := run.X2 - run.X1
+				if width >= minWidth {
+					hMarginBF.AddRun(run)
+				}
+			}
+			hMarginBF.NextY()
+		}
+
+		hMarginRuns := unblob(hMarginBF.Blobs(), float64(img.Width))
+		/*for _, run := range hMarginRuns {
+			fmt.Println("hMarginRun:", run)
+		}*/
+		hMarginRun := coalesce(hMarginRuns, float64(img.Width))
+		fmt.Println("coalesced hMarginRun:", hMarginRun)
+		if false {
+			line := geometry.Polyline{
+				{X: hMarginRun.X1, Y: 0},
+				{X: hMarginRun.X2, Y: 0},
+				{Y: float64(img.Height), X: hMarginRun.X2},
+				{Y: float64(img.Height), X: hMarginRun.X1},
+				{X: hMarginRun.X1, Y: 0},
+			}
+			addLineTo(line, &horizontalMarginPathNode)
+		}
+		checkpoint("process hMarginRuns")
+
+		addLineTo(geometry.Polyline{
+			{X: 0, Y: 0},
+			{X: 0, Y: float64(img.Height)},
+			{X: float64(img.Width), Y: float64(img.Height)},
+			{X: float64(img.Width), Y: 0},
+			{X: 0, Y: 0},
+		}, &verticalMarginPathNode)
+		addLineTo(geometry.Polyline{
+			{X: hMarginRun.X1, Y: vMarginRun.X1},
+			{X: hMarginRun.X2, Y: vMarginRun.X1},
+			{X: hMarginRun.X2, Y: vMarginRun.X2},
+			{X: hMarginRun.X1, Y: vMarginRun.X2},
+			{X: hMarginRun.X1, Y: vMarginRun.X1},
+		}, &verticalMarginPathNode)
+
+		// Crop all other runs
+		for c, rows := range allRuns {
+			filteredRows := make([]Runs, len(rows))
+			for y, row := range rows {
+				if vMarginRun.X1 <= float64(y) && float64(y) < vMarginRun.X2 {
+					for _, run := range row {
+						if hMarginRun.X1 < run.X2 && run.X1 < hMarginRun.X2 {
+							run.X1 = math.Max(run.X1, hMarginRun.X1)
+							run.X2 = math.Min(run.X2, hMarginRun.X2)
+							filteredRows[y] = append(filteredRows[y], run)
+						}
+					}
+				}
+			}
+			allRuns[c] = filteredRows
+		}
+		checkpoint("crop all other runs")
+	}
+
+	// TODO: clean up runs - remove single points and single point voids
 
 	var hbf, vbf *BlobFinder
 	var vBlobs []*Blob
@@ -365,7 +556,7 @@ func Vectorize(img *ColorImage) string {
 	// this function obviously and definitely needs to be refactored and broken up. But for right now, it's convenient to have
 	// details all together here, for easy addition of debug visualization. But I've added a block here to avoid leaking excessive locals.
 	{
-		bf := NewBlobFinder(10, img.Width, img.Height)
+		bf := NewBlobFinder(100, img.Width, img.Height)
 		//bf.TrackRuns = true
 		//FindHorizontalRuns(img, bf)
 		for _, row := range allRuns[color.Black] {
@@ -414,7 +605,7 @@ func Vectorize(img *ColorImage) string {
 			}
 		}
 
-		hbf = NewBlobFinder(10, img.Width, img.Height)
+		hbf = NewBlobFinder(100, img.Width, img.Height)
 		for _, row := range allRuns[color.Black] {
 			for _, run := range row {
 				if !run.Eclipsed {
@@ -423,7 +614,7 @@ func Vectorize(img *ColorImage) string {
 			}
 			hbf.NextY()
 		}
-		vbf = NewBlobFinder(10, img.Height, img.Width)
+		vbf = NewBlobFinder(100, img.Height, img.Width)
 		for _, row := range tRuns {
 			for _, tRun := range row {
 				if !tRun.Eclipsed {
@@ -450,7 +641,7 @@ func Vectorize(img *ColorImage) string {
 		// But it's still useful for testing, to gray out the detected blobs.
 		//clearHorizontalRuns(img, blob)
 
-		outline := blob.Outline(0.2)
+		outline := blob.Outline(0.2, blob.Transposed)
 		var arc geometry.Arc
 		//var circle geometry.Circle
 
@@ -475,13 +666,9 @@ func Vectorize(img *ColorImage) string {
 
 		if used {
 			if blob.Transposed {
-				for i := range outline {
-					p := &outline[i]
-					p.X, p.Y = p.Y, p.X
-				}
-				addTransposedBlobOutline(outline)
+				addBlobOutline(outline, &transposedBlobPathNode)
 			} else {
-				addBlobOutline(outline)
+				addBlobOutline(outline, &blobPathNode)
 			}
 		} else if !blob.Transposed {
 			// Make note of additional unused horizontal runs
@@ -598,7 +785,7 @@ func Vectorize(img *ColorImage) string {
 		hRuns = nil
 
 		for _, blob := range bf.Blobs() {
-			addBlobOutline(blob.Outline(0.3))
+			addBlobOutline(blob.Outline(0.3, false), &blobPathNode)
 
 			var polyline geometry.Polyline
 			var segs []geometry.LineSegment
