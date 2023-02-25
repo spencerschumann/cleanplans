@@ -473,9 +473,9 @@ func NewBlobFinder(bucketSize, maxX, maxY int) *BlobFinder {
 func (bf *BlobFinder) makeBuckets() {
 	bf.prevBuckets = bf.buckets
 	bf.buckets = make([]map[*Run]*Blob, bf.numBuckets)
-	for i := 0; i < bf.numBuckets; i++ {
+	/*for i := 0; i < bf.numBuckets; i++ {
 		bf.buckets[i] = map[*Run]*Blob{}
-	}
+	}*/
 }
 
 func (bf *BlobFinder) NextY() {
@@ -577,6 +577,9 @@ func (bf *BlobFinder) AddRun(run *Run) {
 
 	// track this blob in the buckets belonging to this run
 	for i := firstBucketIdx; i <= lastBucketIdx; i++ {
+		if bf.buckets[i] == nil {
+			bf.buckets[i] = map[*Run]*Blob{}
+		}
 		bf.buckets[i][run] = runBlob
 	}
 }

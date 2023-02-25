@@ -22,13 +22,6 @@ type ColorImage struct {
 	Data   []color.Color
 }
 
-/*type Point struct {
-	X float32
-	Y float32
-}
-
-type Line []Point*/
-
 func (ci *ColorImage) ColorModel() imgcolor.Model {
 	return color.Palette
 }
@@ -76,6 +69,23 @@ func PDFJSImageToColorImage(image []uint8, width, height, bitsPerPixel int) *Col
 		stride := bitsPerPixel / 8
 		size := len(image)
 		for i := 0; i < size; i += stride {
+			// Assume most of the image is white colored background; optimize for long runs of white.
+			// On the WASM build, this cuts down PDFJSImageToColorImage's run time by around half.
+			if image[i] == 0xff {
+				k := i + 1
+				for k < size && image[k] == 0xff {
+					k++
+				}
+				run := (k - i) / 3
+				for k := i; k < j+run; k++ {
+					data[k] = color.White
+				}
+				j += run
+				i += run * 3
+				if i == size {
+					break
+				}
+			}
 			// Ignore alpha for now - assume fully opaque images
 			data[j] = color.RemapColor(image[i], image[i+1], image[i+2])
 			j++
@@ -248,7 +258,7 @@ func timeDeltaMS(t1, t2 time.Time) float64 {
 
 var _checkpoint_lastTime time.Time
 
-func checkpoint(msg string) {
+func Checkpoint(msg string) {
 	now := time.Now()
 	fmt.Printf("Time for %s: %gms\n", msg, timeDeltaMS(_checkpoint_lastTime, now))
 	_checkpoint_lastTime = now
@@ -381,23 +391,30 @@ func Vectorize(img *ColorImage) string {
 	_ = addPoint
 	_ = addRectLine
 
-	checkpoint("Vectorize preamble")
+	Checkpoint("Vectorize preamble")
 	allRuns := FindAllHorizontalRuns(img)
 	for c := color.White; c <= color.LightPurple; c++ {
 		fmt.Printf("Row count for color %d: %d\n", c, len(allRuns[c]))
 	}
-	checkpoint("FindAllHorizontalRuns")
+	Checkpoint("FindAllHorizontalRuns")
 
-	{
+	if true {
 		// Try to find a clipping rectangle to ignore boilerplate - assume the
 		// content will be separated from the boilerplate by a rectangular margin.
 
 		minRatio := 0.9
 
+		yFactor := 1
+		// TODO: this factor isn't quite working, but I think it could give a good speedup.
+		/*if img.Height > 1000 {
+			yFactor = 10
+		}*/
+
 		// Start by finding horizontal near-rectangles
-		vMarginBF := NewBlobFinder(img.Width, img.Width, img.Height)
+		vMarginBF := NewBlobFinder(img.Width, img.Width, img.Height/yFactor)
 		minWidth := float64(img.Width) * minRatio
-		for _, row := range allRuns[color.White] {
+		for y := 0; y < img.Height; y += yFactor {
+			row := allRuns[color.White][y]
 			for _, run := range row {
 				width := run.X2 - run.X1
 				if width > minWidth {
@@ -406,7 +423,7 @@ func Vectorize(img *ColorImage) string {
 			}
 			vMarginBF.NextY()
 		}
-		checkpoint("vMarginBF blob finder")
+		Checkpoint("vMarginBF blob finder")
 
 		// for _, blob := range vMarginBF.Blobs() {
 		// 	addBlobOutline(blob.Outline(0.1, false), &verticalMarginPathNode)
@@ -453,8 +470,10 @@ func Vectorize(img *ColorImage) string {
 		// first scan and unblob and find the vertical content range; then transform those into blobs and transpose.
 		// This will avoid unnecessary blob processing within high-cost text areas at the top and bottom of the page.
 
-		vMarginRuns := unblob(vMarginBF.Blobs(), float64(img.Height))
-		vMarginRun := coalesce(vMarginRuns, float64(img.Height))
+		vMarginRuns := unblob(vMarginBF.Blobs(), float64(img.Height/yFactor))
+		vMarginRun := coalesce(vMarginRuns, float64(img.Height/yFactor))
+		vMarginRun.X1 *= float64(yFactor)
+		vMarginRun.X2 *= float64(yFactor)
 		if false {
 			line := geometry.Polyline{
 				{X: 0, Y: vMarginRun.X1},
@@ -465,23 +484,26 @@ func Vectorize(img *ColorImage) string {
 			}
 			addLineTo(line, &verticalMarginPathNode)
 		}
-		checkpoint("gathering vMargin runs")
+		Checkpoint("gathering vMargin runs")
 
-		bf := NewBlobFinder(30, img.Width, img.Height)
-		for _, runs := range allRuns[color.White] {
-			if len(runs) > 0 && vMarginRun.X1 <= runs[0].Y && runs[0].Y < vMarginRun.X2 {
-				for _, run := range runs {
+		bf := NewBlobFinder(200, img.Width, img.Height/yFactor)
+		for y := 0; y < img.Height; y += yFactor {
+			row := allRuns[color.White][y]
+			if len(row) > 0 && vMarginRun.X1 <= row[0].Y && row[0].Y < vMarginRun.X2 {
+				for _, run := range row {
 					bf.AddRun(run)
 				}
 			}
 			bf.NextY()
 		}
-		checkpoint("gathering runs to transpose")
+		Checkpoint("gathering runs to transpose")
 
-		tRuns := Transpose(bf.Blobs(), img.Width, img.Height)
-		checkpoint("Transpose")
-		hMarginBF := NewBlobFinder(10, img.Height, img.Width)
-		minWidth = vMarginRun.X2 - vMarginRun.X1
+		blobs := bf.Blobs()
+		Checkpoint("bf.Blobs()")
+		tRuns := Transpose(blobs, img.Width, img.Height/yFactor)
+		Checkpoint("Transpose")
+		hMarginBF := NewBlobFinder(10, img.Height/yFactor, img.Width)
+		minWidth = (vMarginRun.X2 - vMarginRun.X1) / float64(yFactor)
 		// TODO: this is a new common pattern - need to move it to a method of BlobFinder
 		for _, row := range tRuns {
 			for _, run := range row {
@@ -503,13 +525,13 @@ func Vectorize(img *ColorImage) string {
 			line := geometry.Polyline{
 				{X: hMarginRun.X1, Y: 0},
 				{X: hMarginRun.X2, Y: 0},
-				{Y: float64(img.Height), X: hMarginRun.X2},
-				{Y: float64(img.Height), X: hMarginRun.X1},
+				{X: hMarginRun.X2, Y: float64(img.Height)},
+				{X: hMarginRun.X1, Y: float64(img.Height)},
 				{X: hMarginRun.X1, Y: 0},
 			}
 			addLineTo(line, &horizontalMarginPathNode)
 		}
-		checkpoint("process hMarginRuns")
+		Checkpoint("process hMarginRuns")
 
 		addLineTo(geometry.Polyline{
 			{X: 0, Y: 0},
@@ -542,7 +564,7 @@ func Vectorize(img *ColorImage) string {
 			}
 			allRuns[c] = filteredRows
 		}
-		checkpoint("crop all other runs")
+		Checkpoint("crop all other runs")
 	}
 
 	// TODO: clean up runs - remove single points and single point voids

@@ -2,8 +2,10 @@ package vectorize
 
 import (
 	"cleanplans/pkg/geometry"
+	"fmt"
 	"math"
 	"sort"
+	"time"
 )
 
 // Outline creates a polyline that traces the outline of the blob.
@@ -57,21 +59,37 @@ func Transpose(blobs []*Blob, maxX, maxY int) []Runs {
 	// which to use for each pixel, and only then build up the blobs.
 	// Update: wrong, the alg used here needs the runs to have been pre-arranged into blobs.
 
-	tempRuns := make([]Runs, maxX)
+	t1 := time.Now()
+	tRuns := make([]Runs, maxX)
+
+	prealloc := make([]Run, 100)
+	prealloc_i := -1
+	makeRun := func(x1, x2, y float64) *Run {
+		prealloc_i++
+		if prealloc_i >= len(prealloc) {
+			prealloc = make([]Run, 100)
+			prealloc_i = 0
+		}
+
+		run := prealloc[prealloc_i]
+		run.X1 = x1
+		run.X2 = x2
+		run.Y = y
+		return &run
+	}
 
 	beginRun := func(x1, x2, y float64) {
 		for i := int(x1); i < int(x2); i++ {
-			tempRuns[i] = append(tempRuns[i], &Run{
-				X1: y,
-				X2: y,
-				Y:  float64(i),
-			})
+			if tRuns[i] == nil {
+				tRuns[i] = make(Runs, 0, 50)
+			}
+			tRuns[i] = append(tRuns[i], makeRun(y, y, float64(i)))
 		}
 	}
 
 	endRun := func(x1, x2, y float64) {
 		for i := int(x1); i < int(x2); i++ {
-			tempRuns[i][len(tempRuns[i])-1].X2 = y
+			tRuns[i][len(tRuns[i])-1].X2 = y
 		}
 	}
 
@@ -88,15 +106,15 @@ func Transpose(blobs []*Blob, maxX, maxY int) []Runs {
 		}
 		endRun(lastRun.X1, lastRun.X2, lastRun.Y+1)
 	}
+	t2 := time.Now()
+	fmt.Printf("  **time to construct tRuns: %gms\n", timeDeltaMS(t1, t2))
 
-	tRuns := make([]Runs, maxX)
-	for i, row := range tempRuns {
+	for rowIndex, row := range tRuns {
 		sort.Slice(row, func(i, j int) bool {
 			return row[i].X1 < row[j].X1
 		})
-
-		var coalesced Runs
 		j := 0
+		k := 0
 		for j < len(row) {
 			run := row[j]
 			j++
@@ -105,10 +123,13 @@ func Transpose(blobs []*Blob, maxX, maxY int) []Runs {
 				run.X2 = row[j].X2
 				j++
 			}
-			coalesced = append(coalesced, run)
+			row[k] = run
+			k++
 		}
-		tRuns[i] = coalesced
+		tRuns[rowIndex] = row[:k]
 	}
+	t3 := time.Now()
+	fmt.Printf("  *time to process tRuns: %gms\n", timeDeltaMS(t2, t3))
 
 	return tRuns
 }

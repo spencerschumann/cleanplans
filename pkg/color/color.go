@@ -78,10 +78,10 @@ func max3(a, b, c byte) byte {
 // RemapColor remaps an RGB color, expressed as r, g, and b components, to a Color.
 func RemapColor(r, g, b byte) Color {
 	// Check for pure white or pure black first - these are expected to be most common
-	/*if r > 200 && g > 200 && b > 200 {
+	/*if r == 255 && g == 255 && b == 255 {
 		return White
 	}
-	if r < 50 && g < 50 && b < 50 {
+	if r == 00 && g == 0 && b == 0 {
 		return Black
 	}*/
 
