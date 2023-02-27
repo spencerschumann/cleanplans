@@ -405,10 +405,11 @@ func Vectorize(img *ColorImage) string {
 		minRatio := 0.9
 
 		yFactor := 1
-		// TODO: this factor isn't quite working, but I think it could give a good speedup.
-		/*if img.Height > 1000 {
+		// Note: this factor isn't quite working, but I think it could give a good speedup.
+		// The problem is that after transposing, some of the lines get skipped.
+		if img.Height > 1000 {
 			yFactor = 10
-		}*/
+		}
 
 		// Start by finding horizontal near-rectangles
 		vMarginBF := NewBlobFinder(img.Width, img.Width, img.Height/yFactor)
@@ -418,16 +419,22 @@ func Vectorize(img *ColorImage) string {
 			for _, run := range row {
 				width := run.X2 - run.X1
 				if width > minWidth {
-					vMarginBF.AddRun(run)
+					run := *run
+					run.Y = float64(y / yFactor)
+					vMarginBF.AddRun(&run)
 				}
 			}
 			vMarginBF.NextY()
 		}
 		Checkpoint("vMarginBF blob finder")
 
-		// for _, blob := range vMarginBF.Blobs() {
-		// 	addBlobOutline(blob.Outline(0.1, false), &verticalMarginPathNode)
-		// }
+		/*for _, blob := range vMarginBF.Blobs() {
+			outline := blob.Outline(0.1, false)
+			for i := range outline {
+				outline[i].Y *= float64(yFactor)
+			}
+			addBlobOutline(outline, &verticalMarginPathNode)
+		}*/
 
 		// Gather together "big enough" runs of non-background in the middle; call these the content region.
 		unblob := func(blobs []*Blob, maxY float64) Runs {
@@ -471,44 +478,58 @@ func Vectorize(img *ColorImage) string {
 		// This will avoid unnecessary blob processing within high-cost text areas at the top and bottom of the page.
 
 		vMarginRuns := unblob(vMarginBF.Blobs(), float64(img.Height/yFactor))
-		vMarginRun := coalesce(vMarginRuns, float64(img.Height/yFactor))
-		vMarginRun.X1 *= float64(yFactor)
-		vMarginRun.X2 *= float64(yFactor)
+		vContentRun := coalesce(vMarginRuns, float64(img.Height/yFactor))
+		// calculate minWidth for the transposed blob finder before transforming the coords
+		minWidth = vContentRun.X2 - vContentRun.X1
+		vContentRun.X1 = math.Max(0, (vContentRun.X1-1)*float64(yFactor)+1)
+		vContentRun.X2 *= float64(yFactor)
 		if false {
 			line := geometry.Polyline{
-				{X: 0, Y: vMarginRun.X1},
-				{X: 0, Y: vMarginRun.X2},
-				{X: float64(img.Width), Y: vMarginRun.X2},
-				{X: float64(img.Width), Y: vMarginRun.X1},
-				{X: 0, Y: vMarginRun.X1},
+				{X: 0, Y: vContentRun.X1},
+				{X: 0, Y: vContentRun.X2},
+				{X: float64(img.Width), Y: vContentRun.X2},
+				{X: float64(img.Width), Y: vContentRun.X1},
+				{X: 0, Y: vContentRun.X1},
 			}
 			addLineTo(line, &verticalMarginPathNode)
 		}
-		Checkpoint("gathering vMargin runs")
+		Checkpoint("finalize vContentRun")
 
 		bf := NewBlobFinder(200, img.Width, img.Height/yFactor)
 		for y := 0; y < img.Height; y += yFactor {
 			row := allRuns[color.White][y]
-			if len(row) > 0 && vMarginRun.X1 <= row[0].Y && row[0].Y < vMarginRun.X2 {
+			if len(row) > 0 && vContentRun.X1 <= row[0].Y && row[0].Y < vContentRun.X2 {
 				for _, run := range row {
-					bf.AddRun(run)
+					run := *run
+					// TODO: can also compress horizontally here - some runs may disappear when doing this
+					run.Y = float64(y / yFactor)
+					bf.AddRun(&run)
 				}
 			}
 			bf.NextY()
 		}
-		Checkpoint("gathering runs to transpose")
+		Checkpoint("gather runs to transpose")
 
 		blobs := bf.Blobs()
+		if false {
+			for _, blob := range blobs {
+				fmt.Println("Blob")
+				for _, run := range blob.Runs {
+					fmt.Println("  Run:", *run)
+				}
+			}
+		}
 		Checkpoint("bf.Blobs()")
 		tRuns := Transpose(blobs, img.Width, img.Height/yFactor)
 		Checkpoint("Transpose")
-		hMarginBF := NewBlobFinder(10, img.Height/yFactor, img.Width)
-		minWidth = (vMarginRun.X2 - vMarginRun.X1) / float64(yFactor)
+		hMarginBF := NewBlobFinder(50, img.Height/yFactor, img.Width)
 		// TODO: this is a new common pattern - need to move it to a method of BlobFinder
 		for _, row := range tRuns {
 			for _, run := range row {
 				width := run.X2 - run.X1
+				//fmt.Println("Transposed run:", *run, "width:", width, "minWidth:", minWidth, "totalWidth:", img.Height/yFactor)
 				if width >= minWidth {
+					//fmt.Println("Adding transposed run", *run)
 					hMarginBF.AddRun(run)
 				}
 			}
@@ -516,9 +537,16 @@ func Vectorize(img *ColorImage) string {
 		}
 
 		hMarginRuns := unblob(hMarginBF.Blobs(), float64(img.Width))
-		/*for _, run := range hMarginRuns {
-			fmt.Println("hMarginRun:", run)
-		}*/
+		if true {
+			for _, blob := range hMarginBF.Blobs() {
+				outline := blob.Outline(0.1, false)
+				for i := range outline {
+					p := &outline[i]
+					p.X, p.Y = p.Y, p.X*float64(yFactor)
+				}
+				addBlobOutline(outline, &horizontalMarginPathNode)
+			}
+		}
 		hMarginRun := coalesce(hMarginRuns, float64(img.Width))
 		fmt.Println("coalesced hMarginRun:", hMarginRun)
 		if false {
@@ -541,18 +569,18 @@ func Vectorize(img *ColorImage) string {
 			{X: 0, Y: 0},
 		}, &verticalMarginPathNode)
 		addLineTo(geometry.Polyline{
-			{X: hMarginRun.X1, Y: vMarginRun.X1},
-			{X: hMarginRun.X2, Y: vMarginRun.X1},
-			{X: hMarginRun.X2, Y: vMarginRun.X2},
-			{X: hMarginRun.X1, Y: vMarginRun.X2},
-			{X: hMarginRun.X1, Y: vMarginRun.X1},
+			{X: hMarginRun.X1, Y: vContentRun.X1},
+			{X: hMarginRun.X2, Y: vContentRun.X1},
+			{X: hMarginRun.X2, Y: vContentRun.X2},
+			{X: hMarginRun.X1, Y: vContentRun.X2},
+			{X: hMarginRun.X1, Y: vContentRun.X1},
 		}, &verticalMarginPathNode)
 
 		// Crop all other runs
 		for c, rows := range allRuns {
 			filteredRows := make([]Runs, len(rows))
 			for y, row := range rows {
-				if vMarginRun.X1 <= float64(y) && float64(y) < vMarginRun.X2 {
+				if vContentRun.X1 <= float64(y) && float64(y) < vContentRun.X2 {
 					for _, run := range row {
 						if hMarginRun.X1 < run.X2 && run.X1 < hMarginRun.X2 {
 							run.X1 = math.Max(run.X1, hMarginRun.X1)
