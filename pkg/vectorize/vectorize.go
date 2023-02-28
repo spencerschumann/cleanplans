@@ -495,7 +495,8 @@ func Vectorize(img *ColorImage) string {
 		}
 		Checkpoint("finalize vContentRun")
 
-		bf := NewBlobFinder(200, img.Width, img.Height/yFactor)
+		// First attempt - transpose and blob find. Commented out for now for reference.
+		/*bf := NewBlobFinder(200, img.Width, img.Height/yFactor)
 		for y := 0; y < img.Height; y += yFactor {
 			row := allRuns[color.White][y]
 			if len(row) > 0 && vContentRun.X1 <= row[0].Y && row[0].Y < vContentRun.X2 {
@@ -547,7 +548,68 @@ func Vectorize(img *ColorImage) string {
 				addBlobOutline(outline, &horizontalMarginPathNode)
 			}
 		}
-		hMarginRun := coalesce(hMarginRuns, float64(img.Width))
+		hMarginRun := coalesce(hMarginRuns, float64(img.Width))*/
+
+		hMarginRun := Run{X2: float64(img.Width)}
+
+		// New attempt on the horizontal margins: find vertical swatches directly from the runs
+		{
+			indices := make([]int, img.Height)
+			//x := 0.0
+			yStart := int(vContentRun.X1)
+			yEnd := int(vContentRun.X2)
+
+			scanX := 0.0
+			for scanX < float64(img.Width) {
+				// find the nearest start of run from the current x pos
+
+				// find the next x position where each row has started a run, and find the largest of all these.
+				largestX := scanX
+				for y := yStart; y < yEnd; y++ {
+					row := allRuns[color.White][y]
+					for indices[y] < len(row) {
+						run := row[indices[y]]
+						if scanX < run.X1 {
+							// next run is past scanX
+							largestX = run.X1
+							break
+						}
+						if run.X1 <= scanX && scanX < run.X2 {
+							// found a run that holds scanX
+							largestX = math.Max(largestX, row[indices[y]].X1)
+							break
+						}
+						indices[y]++ // TODO: is it worth trying to do better than a linear scan here?
+					}
+					if indices[y] >= len(row) {
+						// No runs left on this row
+						largestX = float64(img.Width)
+					}
+				}
+				fmt.Println("...scanX=", scanX, "largestX=", largestX)
+				if scanX != largestX {
+					// Keep trying until all rows have a run at the same point
+					scanX = largestX
+					continue
+				}
+				if scanX >= float64(img.Width) {
+					// Not sure this is needed, actually
+					break
+				}
+				fmt.Println("Next X start:", largestX)
+
+				// Now scan forward to the earliest run end of any row
+				nextX := float64(img.Width)
+				for y := yStart; y < yEnd; y++ {
+					run := allRuns[color.White][y][indices[y]]
+					nextX = math.Min(nextX, run.X2)
+				}
+				fmt.Println("    X end:", nextX)
+				//x = nextX
+				scanX = nextX // TODO: maybe x and scanX are the same?
+			}
+		}
+
 		fmt.Println("coalesced hMarginRun:", hMarginRun)
 		if false {
 			line := geometry.Polyline{
