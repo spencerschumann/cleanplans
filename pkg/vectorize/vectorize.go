@@ -69,19 +69,19 @@ func PDFJSImageToColorImage(image []uint8, width, height, bitsPerPixel int) *Col
 		stride := bitsPerPixel / 8
 		size := len(image)
 		for i := 0; i < size; i += stride {
-			// Assume most of the image is white colored background; optimize for long runs of white.
+			// Assume most of the image is white-colored background, and optimize for long runs of white.
 			// On the WASM build, this cuts down PDFJSImageToColorImage's run time by around half.
 			if image[i] == 0xff {
 				k := i + 1
 				for k < size && image[k] == 0xff {
 					k++
 				}
-				run := (k - i) / 3
+				run := (k - i) / stride
 				for k := i; k < j+run; k++ {
 					data[k] = color.White
 				}
 				j += run
-				i += run * 3
+				i += run * stride
 				if i == size {
 					break
 				}
@@ -494,61 +494,6 @@ func Vectorize(img *ColorImage) string {
 			addLineTo(line, &verticalMarginPathNode)
 		}
 		Checkpoint("finalize vContentRun")
-
-		// First attempt - transpose and blob find. Commented out for now for reference.
-		/*bf := NewBlobFinder(200, img.Width, img.Height/yFactor)
-		for y := 0; y < img.Height; y += yFactor {
-			row := allRuns[color.White][y]
-			if len(row) > 0 && vContentRun.X1 <= row[0].Y && row[0].Y < vContentRun.X2 {
-				for _, run := range row {
-					run := *run
-					// TODO: can also compress horizontally here - some runs may disappear when doing this
-					run.Y = float64(y / yFactor)
-					bf.AddRun(&run)
-				}
-			}
-			bf.NextY()
-		}
-		Checkpoint("gather runs to transpose")
-
-		blobs := bf.Blobs()
-		if false {
-			for _, blob := range blobs {
-				fmt.Println("Blob")
-				for _, run := range blob.Runs {
-					fmt.Println("  Run:", *run)
-				}
-			}
-		}
-		Checkpoint("bf.Blobs()")
-		tRuns := Transpose(blobs, img.Width, img.Height/yFactor)
-		Checkpoint("Transpose")
-		hMarginBF := NewBlobFinder(50, img.Height/yFactor, img.Width)
-		// TODO: this is a new common pattern - need to move it to a method of BlobFinder
-		for _, row := range tRuns {
-			for _, run := range row {
-				width := run.X2 - run.X1
-				//fmt.Println("Transposed run:", *run, "width:", width, "minWidth:", minWidth, "totalWidth:", img.Height/yFactor)
-				if width >= minWidth {
-					//fmt.Println("Adding transposed run", *run)
-					hMarginBF.AddRun(run)
-				}
-			}
-			hMarginBF.NextY()
-		}
-
-		hMarginRuns := unblob(hMarginBF.Blobs(), float64(img.Width))
-		if true {
-			for _, blob := range hMarginBF.Blobs() {
-				outline := blob.Outline(0.1, false)
-				for i := range outline {
-					p := &outline[i]
-					p.X, p.Y = p.Y, p.X*float64(yFactor)
-				}
-				addBlobOutline(outline, &horizontalMarginPathNode)
-			}
-		}
-		hMarginRun := coalesce(hMarginRuns, float64(img.Width))*/
 
 		hMarginRun := Run{X2: float64(img.Width)}
 
