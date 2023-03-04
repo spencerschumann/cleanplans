@@ -3,14 +3,18 @@ package vectorize
 import (
 	"cleanplans/pkg/geometry"
 	"math"
+
+	//"math"
 	"sort"
+
+	"github.com/chewxy/math32"
 )
 
 // Run is a horizontal set of adjacent, same-colored pixels.
 type Run struct {
-	X1       float64
-	X2       float64
-	Y        float64
+	X1       Float
+	X2       Float
+	Y        Float
 	Eclipsed bool
 }
 
@@ -32,12 +36,12 @@ type Blob struct {
 }
 
 // AverageWidth returns the average width of the runs.
-func (runs Runs) AverageWidth() float64 {
-	wSum := 0.0
+func (runs Runs) AverageWidth() Float {
+	var wSum Float = 0.0
 	for _, run := range runs {
 		wSum += run.X2 - run.X1
 	}
-	count := float64(len(runs))
+	count := Float(len(runs))
 	return wSum / count
 }
 
@@ -91,9 +95,7 @@ func (blob *Blob) BestFitCircle() geometry.Circle {
 	// Note: this was already calculated in ToPolyline; if that function is always called first,
 	// the result could be used to avoid recomputing it here. Might be worth converting blob
 	// to a struct and memoizing the result.
-	n := 0.0
-	sumX := 0.0
-	sumY := 0.0
+	var n, sumX, sumY Float
 	for _, run := range blob.Runs {
 		y := run.Y + 0.5
 		width := run.X2 - run.X1
@@ -106,13 +108,7 @@ func (blob *Blob) BestFitCircle() geometry.Circle {
 	avgY := sumY / n
 
 	// Calculate Sxxx sums for Eq. 4 and Eq. 5
-	Suv := 0.0
-	Suu := 0.0
-	Svv := 0.0
-	Suuu := 0.0
-	Svvv := 0.0
-	Suvv := 0.0
-	Svuu := 0.0
+	var Suv, Suu, Svv, Suuu, Svvv, Suvv, Svuu Float
 	for _, run := range blob.Runs {
 		u1 := run.X1 - avgX
 		u2 := run.X2 - avgX
@@ -150,7 +146,8 @@ func (blob *Blob) BestFitCircle() geometry.Circle {
 	vc := (a1*c2 - a2*c1) / det
 
 	// Substitute uc and uv into Eq. 6 to compute radius
-	radius := math.Sqrt(uc*uc + vc*vc + (Suu+Svv)/n)
+	//radius := math32.Sqrt(uc*uc + vc*vc + (Suu+Svv)/n)
+	radius := Float(math.Sqrt(float64(uc*uc + vc*vc + (Suu+Svv)/n)))
 	xc := uc + avgX
 	yc := vc + avgY
 
@@ -177,18 +174,18 @@ func LineFitAcceptable(runs Runs, line geometry.LineSegment) bool {
 		width = math.Abs(geometry.Point{X: width}.CrossProductZ(ray)) / ray.Magnitude()
 	*/
 
-	sumExtra := func(a, b float64) float64 {
+	sumExtra := func(a, b Float) Float {
 		if b <= a {
 			return 0
 		}
 		// integrate function y=x-w, from x=a to x=b
-		extra := math.Abs((b*b/2 - halfWidth*b) - (a*a/2 - halfWidth*a))
+		extra := math32.Abs((b*b/2 - halfWidth*b) - (a*a/2 - halfWidth*a))
 		//fmt.Printf("    extra %f from x=%f to x=%f\n", extra, a, b)
 		return extra / 5
 	}
 
-	sumMissing := func(a, b float64) float64 {
-		missing := math.Max(0, b-a)
+	sumMissing := func(a, b Float) Float {
+		missing := math32.Max(0, b-a)
 		// if missing > 0 {
 		// 	fmt.Printf("    missing %f from x=%f to x=%f\n", missing, a, b)
 		// }
@@ -200,9 +197,7 @@ func LineFitAcceptable(runs Runs, line geometry.LineSegment) bool {
 	b := line.B.X - line.A.X
 	c := line.A.X*line.B.Y - line.B.X*line.A.Y
 
-	error := 0.0
-	xError := 0.0
-	xAvgError := 0.0
+	var error, xError, xAvgError Float
 	for _, run := range runs {
 		y := run.Y + 0.5
 		// substitute y into line equation and solve for x:
@@ -216,18 +211,18 @@ func LineFitAcceptable(runs Runs, line geometry.LineSegment) bool {
 		r2 := run.X2 - x
 		mid := (run.X1 + run.X2) / 2
 		xAvgError += x - mid
-		xError += math.Abs(x - mid)
+		xError += math32.Abs(x - mid)
 		//fmt.Printf("  run %v, x=%f, x-delta=%f, e1=%f, e2=%f, r1=%f, r2=%f\n", run, x, math.Abs(x-mid), e1, e2, r1, r2)
-		if math.Abs(mid-x) < .5 && math.Abs(r1-e1) < 1 && math.Abs(r2-e2) < 1 {
+		if math32.Abs(mid-x) < .5 && math32.Abs(r1-e1) < 1 && math32.Abs(r2-e2) < 1 {
 			// consider these runs to be equivalent - no error
 			// TODO: make threshold configurable?
 			// TODO: also track overall midpoint drift? For example, a perfect vertical line that's shifted 0.49 pixels to the right should show an error.
 			//fmt.Println("   No error")
 		} else {
-			error += sumMissing(e1, math.Min(e2, r1))
-			error += sumMissing(math.Max(e1, r2), e2)
-			error += sumExtra(r1, math.Min(r2, e1))
-			error += sumExtra(math.Max(r1, e2), r2)
+			error += sumMissing(e1, math32.Min(e2, r1))
+			error += sumMissing(math32.Max(e1, r2), e2)
+			error += sumExtra(r1, math32.Min(r2, e1))
+			error += sumExtra(math32.Max(r1, e2), r2)
 		}
 	}
 
@@ -235,27 +230,22 @@ func LineFitAcceptable(runs Runs, line geometry.LineSegment) bool {
 
 	// TODO: configurable threshold, and should it depend on width and/or length of line?
 	//return error < 1.0+0.02*math.Sqrt(count) && math.Abs(xAvgError) < .01*math.Sqrt(count) && xError < 0.2*math.Sqrt(count)
-	return error < 1.0 && math.Abs(xAvgError) < 0.3 //&& xError <
+	return error < 1.0 && math32.Abs(xAvgError) < 0.3 //&& xError <
 }
 
 func ToLineSegment(runs Runs) geometry.LineSegment {
 	// use linear regression to find the best-fit line to the blob
-	n := 0.0
-	Sx := 0.0
-	Sxx := 0.0
-	Sy := 0.0
-	Syy := 0.0
-	Sxy := 0.0
-	minX := math.Inf(+1)
-	maxX := math.Inf(-1)
+	var n, Sx, Sxx, Sy, Syy, Sxy float64
+	//minX := math.Inf(+1)
+	//maxX := math.Inf(-1)
 	minY := math.Inf(+1)
 	maxY := math.Inf(-1)
 	for _, run := range runs {
-		y := run.Y + 0.5
-		width := run.X2 - run.X1
+		y := float64(run.Y) + 0.5
+		width := float64(run.X2 - run.X1)
 		n += width
 		Sy += width * y
-		runSumX := width * (run.X1 + run.X2) / 2
+		runSumX := width * float64(run.X1+run.X2) / 2
 		Sx += runSumX
 		Sxy += runSumX * y
 
@@ -265,45 +255,49 @@ func ToLineSegment(runs Runs) geometry.LineSegment {
 
 		// TODO: I can't remember why this Sxx definition is different than the Sxx definition in BestFitCircle.
 		// I would have thought the BestFitCircle definition would work, but it doesn't.
-		Sxx += width*run.X1*run.X1 + run.X1*width*width + width*width*width/3
+		Sxx += width*float64(run.X1)*float64(run.X1) + float64(run.X1)*width*width + width*width*width/3
 
 		Syy += y * y * width
-		minX = math.Min(minX, run.X1)
-		maxX = math.Max(maxX, run.X2)
+		//minX = math.Min(minX, float64(run.X1))
+		//maxX = math.Max(maxX, float64(run.X2))
 		minY = math.Min(minY, y)
 		maxY = math.Max(maxY, y)
 	}
 
-	betaDenominatorX := n*Sxx - Sx*Sx
+	//betaDenominatorX := n*Sxx - Sx*Sx
 	betaDenominatorY := n*Syy - Sy*Sy
+	/*if betaDenominatorY == 0 {
+		fmt.Println("*** betaDenominatorY == 0:", n, Syy, Sy)
+	}*/
 	var p1, p2 geometry.Point
-	if false && betaDenominatorY < betaDenominatorX {
+	/*if false && betaDenominatorY < betaDenominatorX {
 		// mostly horizontal line
 		betaNumerator := n*Sxy - Sx*Sy
 		beta := betaNumerator / betaDenominatorX
 		alpha := Sy/n - beta*Sx/n
 		p1 = geometry.Point{X: minX, Y: alpha + beta*minX}
 		p2 = geometry.Point{X: maxX, Y: alpha + beta*maxX}
-	} else {
+	} else*/{
 		// mostly vertical line
 		betaNumerator := n*Sxy - Sx*Sy
 		beta := betaNumerator / betaDenominatorY
 		alpha := Sx/n - beta*Sy/n
-		p1 = geometry.Point{Y: minY, X: alpha + beta*minY}
-		p2 = geometry.Point{Y: maxY, X: alpha + beta*maxY}
+		p1 = geometry.Point{Y: Float(minY), X: Float(alpha + beta*minY)}
+		p2 = geometry.Point{Y: Float(maxY), X: Float(alpha + beta*maxY)}
+
+		/*if math32.IsNaN(p1.X) {
+			fmt.Println("*** X is NaN:", alpha, beta, minY, betaNumerator, betaDenominatorY, Sx, Sy, n)
+		}*/
 	}
 	return geometry.LineSegment{A: p1, B: p2}
 }
 
 func findSplit(runs Runs) int {
 	// First choice: try to find a corner directly.
-	min := math.Inf(+1)
-	max := math.Inf(-1)
-	firstMin := 0
-	lastMin := 0
+	min := math32.Inf(+1)
+	max := math32.Inf(-1)
+	var firstMin, lastMin, firstMax, lastMax int
 	minRunning := false
-	firstMax := 0
-	lastMax := 0
 	maxRunning := false
 	for i, run := range runs {
 		if run.X1 < min {
@@ -334,7 +328,7 @@ func findSplit(runs Runs) int {
 	//	len(runs), width, min, max, firstMin, lastMin, firstMax, lastMax)
 	// If there's a clump of max or min runs that's not too large and that's
 	// not too close to the ends, use the middle of the clump as the split point.
-	maxRun := int(math.Max(float64(width*10), float64(len(runs)/4)))
+	maxRun := int(math32.Max(Float(width*10), Float(len(runs)/4)))
 	if width < firstMin && lastMin < len(runs)-width && (lastMin-firstMin) < maxRun {
 		return (firstMin+lastMin)/2 + 1
 	}
@@ -401,12 +395,16 @@ func conjoin(segs []geometry.LineSegment) geometry.Polyline {
 		prev := segs[i]
 		next := segs[i+1]
 		isect := intersection(prev, next)
-		dpn := math.Max(2, prev.B.Distance(next.A))
+		dpn := math32.Max(2, prev.B.Distance(next.A))
 		dpbi := prev.B.Distance(isect)
 		dpai := prev.A.Distance(isect)
 		dnai := next.A.Distance(isect)
 		dnbi := next.B.Distance(isect)
 		if dnai < dpn*10 && dpbi < dpn*10 && dpbi < dpai && dnai < dnbi {
+			/*if math32.IsNaN(isect.X) || math32.IsNaN(isect.Y) {
+				fmt.Println("Bad isect for", prev, next, ":", isect)
+				panic("bad isect")
+			}*/
 			polyline = append(polyline, isect)
 		} else {
 			// The intersection either doesn't exist or is too far away.
@@ -414,6 +412,10 @@ func conjoin(segs []geometry.LineSegment) geometry.Polyline {
 			delta := next.A.Minus(prev.B)
 			ratio := next.Length() / (prev.Length() + next.Length())
 			p := prev.B.Add(delta.Scale(ratio))
+			/*if math32.IsNaN(p.X) || math32.IsNaN(p.Y) {
+				fmt.Println("Bad averaging for", prev, next, ":", p)
+				panic("bad isect")
+			}*/
 			polyline = append(polyline, p)
 		}
 	}
@@ -422,7 +424,7 @@ func conjoin(segs []geometry.LineSegment) geometry.Polyline {
 }
 
 func (blob *Blob) ToPolyline() (geometry.Polyline, []geometry.LineSegment) {
-	segs := splitify(blob.Runs[:])
+	segs := splitify(blob.Runs[:]) // TODO: do I need this slice copy here?
 	if blob.Transposed {
 		for i := range segs {
 			seg := &segs[i]
@@ -431,6 +433,21 @@ func (blob *Blob) ToPolyline() (geometry.Polyline, []geometry.LineSegment) {
 		}
 	}
 	polyline := conjoin(segs)
+
+	/*for _, point := range polyline {
+		// TODO: make math32/math and Float all part of a float package, to handle the float32/float64 split
+		if math32.IsNaN(point.X) || math32.IsNaN(point.Y) {
+			fmt.Println("Bad blob!!!!")
+			for _, run := range blob.Runs {
+				fmt.Println("  Run:", *run)
+			}
+			for _, seg := range segs {
+				fmt.Println("  Seg:", seg)
+			}
+			break
+		}
+	}*/
+
 	return polyline, segs
 }
 
@@ -544,7 +561,7 @@ func (bf *BlobFinder) AddRun(run *Run) {
 				continue
 			}
 			if runBlob == nil {
-				if blob.Runs[len(blob.Runs)-1].Y == float64(bf.y)-1 {
+				if blob.Runs[len(blob.Runs)-1].Y == Float(bf.y)-1 {
 					// add run to this blob
 					runBlob = blob
 				} else {
@@ -557,8 +574,8 @@ func (bf *BlobFinder) AddRun(run *Run) {
 			if blob != runBlob && !connected[blob] {
 				// Run has already been added to a blob; any other overlapping prevRuns are part of connected blobs.
 				// add a connection point at the midpoint of the overlap between the runs
-				x1 := math.Max(prevRun.X1, run.X1)
-				x2 := math.Min(prevRun.X2, run.X2)
+				x1 := math32.Max(prevRun.X1, run.X1)
+				x2 := math32.Min(prevRun.X2, run.X2)
 				location := geometry.Point{
 					X: (x1 + x2) / 2,
 					Y: (prevRun.Y+run.Y)/2 + 0.5,
@@ -601,7 +618,7 @@ func split(blob *Blob) []*Blob {
 
 	runs := blob.Runs
 
-	width := func(run *Run) float64 {
+	width := func(run *Run) Float {
 		return run.X2 - run.X1
 	}
 
@@ -614,7 +631,7 @@ func split(blob *Blob) []*Blob {
 		}
 		w := width(run)
 		// If successive runs differ by at least a minimum amount and factor, split there.
-		if math.Abs(lastW-w) > 3 && math.Max(lastW, w) > math.Min(lastW, w)*2 {
+		if math32.Abs(lastW-w) > 3 && math32.Max(lastW, w) > math32.Min(lastW, w)*2 {
 			newBlob := &Blob{
 				Runs: runs[firstIndex:i],
 			}

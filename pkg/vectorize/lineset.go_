@@ -9,11 +9,11 @@ import (
 
 type LineSet struct {
 	quadTree *quadtree.QuadTree
-	width    float64
-	height   float64
+	width    Float
+	height   Float
 }
 
-func NewLineSet(width, height float64) *LineSet {
+func NewLineSet(width, height Float) *LineSet {
 	aabb := quadtree.NewAABB(
 		quadtree.NewPoint(width/2, height/2, nil),
 		quadtree.NewPoint(width/2+10, height/2+10, nil),
@@ -33,7 +33,7 @@ func (ls *LineSet) AddLine(line geometry.Polyline) {
 		return
 	}
 
-	addOne := func(x, y float64) {
+	addOne := func(x, y Float) {
 		point := quadtree.NewPoint(x, y, nil)
 		points := ls.quadTree.KNearest(quadtree.NewAABB(point, zeroPoint), 1, nil)
 		if len(points) > 0 {
@@ -55,7 +55,7 @@ func (ls *LineSet) AddLine(line geometry.Polyline) {
 }
 
 /*func (t *pathTree) removePath(path *svgpath.SubPath) {
-	removeOne := func(x, y float64) {
+	removeOne := func(x, y Float) {
 		point := quadtree.NewPoint(x, y, nil)
 		points := t.quadTree.KNearest(quadtree.NewAABB(point, zeroPoint), 1, nil)
 		if len(points) > 0 {
@@ -74,7 +74,7 @@ func (ls *LineSet) AddLine(line geometry.Polyline) {
 	removeOne(ex, ey)
 }*/
 
-func (ls *LineSet) FindNeighbors(p geometry.Point, maxDist float64) []geometry.Polyline {
+func (ls *LineSet) FindNeighbors(p geometry.Point, maxDist Float) []geometry.Polyline {
 	var neighbors []geometry.Polyline
 	nearAABB := quadtree.NewAABB(
 		quadtree.NewPoint(p.X, p.Y, nil),

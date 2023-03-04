@@ -34,8 +34,8 @@ func makeImage(rows ...string) *vectorize.ColorImage {
 }
 
 type testRun struct {
-	X1 float64
-	X2 float64
+	X1 Float
+	X2 Float
 }
 
 type testRunHandler struct {

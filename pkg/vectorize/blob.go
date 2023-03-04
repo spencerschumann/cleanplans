@@ -3,13 +3,14 @@ package vectorize
 import (
 	"cleanplans/pkg/geometry"
 	"fmt"
-	"math"
 	"sort"
 	"time"
+
+	"github.com/chewxy/math32"
 )
 
 // Outline creates a polyline that traces the outline of the blob.
-func (blob *Blob) Outline(margin float64, transposed bool) geometry.Polyline {
+func (blob *Blob) Outline(margin Float, transposed bool) geometry.Polyline {
 	x1, x2 := blob.Runs[0].X1, blob.Runs[0].X2
 	left := geometry.Polyline{{X: x1 + margin, Y: blob.Runs[0].Y + margin}}
 	right := geometry.Polyline{{X: x2 - margin, Y: blob.Runs[0].Y + margin}}
@@ -64,7 +65,7 @@ func Transpose(blobs []*Blob, maxX, maxY int) []Runs {
 
 	prealloc := make([]Run, 100)
 	prealloc_i := -1
-	makeRun := func(x1, x2, y float64) *Run {
+	makeRun := func(x1, x2, y Float) *Run {
 		prealloc_i++
 		if prealloc_i >= len(prealloc) {
 			prealloc = make([]Run, 100)
@@ -78,16 +79,16 @@ func Transpose(blobs []*Blob, maxX, maxY int) []Runs {
 		return &run
 	}
 
-	beginRun := func(x1, x2, y float64) {
+	beginRun := func(x1, x2, y Float) {
 		for i := int(x1); i < int(x2); i++ {
 			if tRuns[i] == nil {
 				tRuns[i] = make(Runs, 0, 50)
 			}
-			tRuns[i] = append(tRuns[i], makeRun(y, y, float64(i)))
+			tRuns[i] = append(tRuns[i], makeRun(y, y, Float(i)))
 		}
 	}
 
-	endRun := func(x1, x2, y float64) {
+	endRun := func(x1, x2, y Float) {
 		for i := int(x1); i < int(x2); i++ {
 			tRuns[i][len(tRuns[i])-1].X2 = y
 		}
@@ -97,11 +98,11 @@ func Transpose(blobs []*Blob, maxX, maxY int) []Runs {
 		lastRun := Run{}
 		for _, run := range blob.Runs {
 			// wherever lastRun reaches that run does not, need to deactivate tRun
-			endRun(lastRun.X1, math.Min(lastRun.X2, run.X1), run.Y)
-			endRun(math.Max(lastRun.X1, run.X2), lastRun.X2, run.Y)
+			endRun(lastRun.X1, math32.Min(lastRun.X2, run.X1), run.Y)
+			endRun(math32.Max(lastRun.X1, run.X2), lastRun.X2, run.Y)
 			// wherever run reaches that lastRun did not, need to activate a new tRun
-			beginRun(run.X1, math.Min(run.X2, lastRun.X1), run.Y)
-			beginRun(math.Max(run.X1, lastRun.X2), run.X2, run.Y)
+			beginRun(run.X1, math32.Min(run.X2, lastRun.X1), run.Y)
+			beginRun(math32.Max(run.X1, lastRun.X2), run.X2, run.Y)
 			lastRun = *run
 		}
 		endRun(lastRun.X1, lastRun.X2, lastRun.Y+1)
@@ -136,12 +137,10 @@ func Transpose(blobs []*Blob, maxX, maxY int) []Runs {
 
 func FindMaxRect(blob *Blob) geometry.Rectangle {
 	// Find the widest run and longest sequence of identical runs
-	maxWidth := math.Inf(-1)
+	maxWidth := math32.Inf(-1)
 	maxI := -1
 	currentRunRun := blob.Runs[0]
-	currentStart := 0
-	bestStart := 0
-	bestEnd := 0
+	var currentStart, bestStart, bestEnd int
 	for i, run := range blob.Runs {
 		width := run.X2 - run.X1
 		if width > maxWidth {
@@ -180,8 +179,8 @@ func FindMaxRect(blob *Blob) geometry.Rectangle {
 			if !(run.X1 <= seedX && seedX <= run.X2) {
 				break
 			}
-			left = math.Max(left, run.X1)
-			right = math.Min(right, run.X2)
+			left = math32.Max(left, run.X1)
+			right = math32.Min(right, run.X2)
 			bottom = run.Y + 1
 		}
 		top := maxRun.Y
@@ -190,8 +189,8 @@ func FindMaxRect(blob *Blob) geometry.Rectangle {
 			if !(run.X1 <= seedX && seedX <= run.X2) {
 				break
 			}
-			left = math.Max(left, run.X1)
-			right = math.Min(right, run.X2)
+			left = math32.Max(left, run.X1)
+			right = math32.Min(right, run.X2)
 			top = run.Y
 		}
 		return geometry.Rectangle{
