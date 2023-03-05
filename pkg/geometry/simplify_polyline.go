@@ -1,19 +1,15 @@
 package geometry
 
 import (
+	"cleanplans/pkg/float"
 	"math"
-
-	"github.com/chewxy/math32"
 )
 
 // TODO: consolidate other geometrical definitions into this package.
 
-// Float is a floating point type. This type alias allows for easy switching between float32 and float64.
-type Float = float32
-
 type Point struct {
-	X Float
-	Y Float
+	X float.Float
+	Y float.Float
 }
 
 type Vector2 = Point
@@ -32,7 +28,7 @@ type Polyline []Point
 
 type Circle struct {
 	Center Point
-	Radius Float
+	Radius float.Float
 }
 
 type Arc struct {
@@ -49,7 +45,7 @@ func findCenter(A, B, C Point) Point {
 	//   (A.X-B.X) * O.X + (A.Y-B.Y) * O.Y = 0.5*(A.X*A.X - B.X*B.X + A.Y*A.Y - B.Y*B.Y)
 	//   (B.X-C.X) * O.X + (B.Y-C.Y) * O.Y = 0.5*(B.X*B.X - C.X*C.X + B.Y*B.Y - C.Y*C.Y)
 
-	determinant := func(a, b, c, d Float) Float {
+	determinant := func(a, b, c, d float.Float) float.Float {
 		return a*d - b*c
 	}
 
@@ -61,8 +57,8 @@ func findCenter(A, B, C Point) Point {
 	det := determinant(a, b, c, d)
 	if det == 0 {
 		return Point{
-			X: math32.NaN(),
-			Y: math32.NaN(),
+			X: float.NaN(),
+			Y: float.NaN(),
 		}
 	}
 
@@ -105,32 +101,32 @@ func (a Vector2) Add(b Vector2) Vector2 {
 	}
 }
 
-func (v Vector2) Magnitude() Float {
-	//return math32.Hypot(v.X, v.Y)
-	return Float(math.Sqrt(float64(v.X*v.X + v.Y*v.Y)))
+func (v Vector2) Magnitude() float.Float {
+	//return float.Hypot(v.X, v.Y)
+	return float.Float(math.Sqrt(float64(v.X*v.X + v.Y*v.Y)))
 }
 
-func (a Vector2) CrossProductZ(b Vector2) Float {
+func (a Vector2) CrossProductZ(b Vector2) float.Float {
 	return a.X*b.Y - a.Y*b.X
 }
 
 // Distance returns the distance between two points.
-func (p Point) Distance(other Point) Float {
-	//return math32.Hypot(p.X-other.X, p.Y-other.Y)
+func (p Point) Distance(other Point) float.Float {
+	//return float.Hypot(p.X-other.X, p.Y-other.Y)
 	return p.Minus(other).Magnitude()
 }
 
 // Scale returns the point scaled by the given factor f.
-func (p Point) Scale(f Float) Point {
+func (p Point) Scale(f float.Float) Point {
 	return Point{X: p.X * f, Y: p.Y * f}
 }
 
-func (s LineSegment) Length() Float {
+func (s LineSegment) Length() float.Float {
 	return s.A.Distance(s.B)
 }
 
 // Distance returns the distance between a point and a line segment.
-func (s LineSegment) Distance(p Point) Float {
+func (s LineSegment) Distance(p Point) float.Float {
 	/*if s.A.X == s.B.X {
 		return math.Abs(p.X - s.A.X)
 	}
@@ -166,27 +162,27 @@ func (s LineSegment) Distance(p Point) Float {
 	if mAP > mAB || mBP > mAB {
 		// closest point on line is outside segment boundaries, so the closest point
 		// is the nearest of the two endpoints.
-		return math32.Min(mAP, mBP)
+		return float.Min(mAP, mBP)
 	}
 
-	return math32.Abs(AP.CrossProductZ(AB)) / mAB
+	return float.Abs(AP.CrossProductZ(AB)) / mAB
 }
 
 // For DistanceToLine and DistanceToCircle, making the line or circle the receiver
 // would remove the need for the "ToX" suffix.
 
 // Distance returns the distance between a point and a circle.
-func (p Point) DistanceToCircle(c Circle) Float {
-	return math32.Abs(p.Distance(c.Center) - c.Radius)
+func (p Point) DistanceToCircle(c Circle) float.Float {
+	return float.Abs(p.Distance(c.Center) - c.Radius)
 }
 
-func (line Polyline) EndpointDistance(p Point) Float {
+func (line Polyline) EndpointDistance(p Point) float.Float {
 	if len(line) == 0 {
-		return math32.NaN()
+		return float.NaN()
 	}
 	d := line[0].Distance(p)
 	if len(line) > 1 {
-		d = math32.Min(d, line[len(line)-1].Distance(p))
+		d = float.Min(d, line[len(line)-1].Distance(p))
 	}
 	return d
 }
@@ -205,7 +201,7 @@ func (line Polyline) ConnectTo(other Polyline) Polyline {
 	}
 
 	var connector Polyline
-	dist := math32.Inf(1)
+	dist := float.Inf(1)
 	for _, p1 := range c1 {
 		for _, p2 := range c2 {
 			d := p1.Distance(p2)
@@ -220,7 +216,7 @@ func (line Polyline) ConnectTo(other Polyline) Polyline {
 
 // Simplify simplifies the polyline using the Douglas-Peucker algorithm
 // and returns the simplified curve as a mix of line segments and circular arcs.
-func (points Polyline) Simplify(epsilon Float) Polyline {
+func (points Polyline) Simplify(epsilon float.Float) Polyline {
 	if len(points) < 2 {
 		return nil
 	}
@@ -232,7 +228,7 @@ func (points Polyline) Simplify(epsilon Float) Polyline {
 		return Polyline{firstPoint, lastPoint}
 	}
 
-	dmax := Float(0.0)
+	dmax := float.Float(0.0)
 	index := 0
 	for i := 1; i < len(points)-1; i++ {
 		d := chord.Distance(points[i])

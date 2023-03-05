@@ -13,17 +13,17 @@ import (
 func TestPointJoiner(t *testing.T) {
 	tests := []struct {
 		Name   string
-		Input  [][]Float
+		Input  [][]float.Float
 		Output []vectorize.Blob
 	}{
 		{
 			Name:   "single point",
-			Input:  [][]Float{{1}},
+			Input:  [][]float.Float{{1}},
 			Output: nil,
 		},
 		{
 			Name: "two vertical lines",
-			Input: [][]Float{
+			Input: [][]float.Float{
 				{1, 5},
 				{1, 5},
 			},
@@ -35,7 +35,7 @@ func TestPointJoiner(t *testing.T) {
 
 		{
 			Name: "two 45 degree diagonal lines",
-			Input: [][]Float{
+			Input: [][]float.Float{
 				{1, 10},
 				{2, 9},
 			},
@@ -47,7 +47,7 @@ func TestPointJoiner(t *testing.T) {
 
 		{
 			Name: "one nearly vertical line and one diagonal slightly over 45 degrees",
-			Input: [][]Float{
+			Input: [][]float.Float{
 				{1, 10},
 				{1.1, 8.9},
 			},

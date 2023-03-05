@@ -3,6 +3,7 @@ package vectorize
 import (
 	"cleanplans/pkg/cleaner"
 	"cleanplans/pkg/color"
+	"cleanplans/pkg/float"
 	"cleanplans/pkg/geometry"
 	"cleanplans/pkg/svgpath"
 	"encoding/xml"
@@ -12,8 +13,6 @@ import (
 	"sort"
 	"strconv"
 	"time"
-
-	"github.com/chewxy/math32"
 )
 
 // Terrible name...if this works, I need to change names to avoid collisions with the standard Go image and color packages.
@@ -161,8 +160,8 @@ func filterLine(pj *BlobFinder, line Blob) []Blob {
 
 	// Only allow widths of median +/- 2.5 (one pixel on each side, plus a little slop) or 20%
 	widthOk := func(width int) bool {
-		diff := math.Abs(Float(median - width))
-		return diff <= 2.5 || diff < (Float(median)*.2)
+		diff := math.Abs(float.Float(median - width))
+		return diff <= 2.5 || diff < (float.Float(median)*.2)
 	}
 
 	bestRunStart := -1
@@ -196,9 +195,9 @@ func trimLines(lines []Blob) []Blob {
 	for _, line := range lines {
 		totalWidth := 0.0
 		for _, pt := range line {
-			totalWidth += Float(pt.Width)
+			totalWidth += float.Float(pt.Width)
 		}
-		avgWidth := totalWidth / Float(len(line))
+		avgWidth := totalWidth / float.Float(len(line))
 
 		// Trim avgWidth segments off the beginning and end of the line; if there's nothing left, remove it completely.
 		trim := int(avgWidth + 0.5)
@@ -253,8 +252,8 @@ func reverse(input geometry.Polyline) {
 	}
 }
 
-func timeDeltaMS(t1, t2 time.Time) Float {
-	return Float(t2.Sub(t1)) / Float(time.Millisecond)
+func timeDeltaMS(t1, t2 time.Time) float.Float {
+	return float.Float(t2.Sub(t1)) / float.Float(time.Millisecond)
 }
 
 var _checkpoint_lastTime time.Time
@@ -332,7 +331,7 @@ func Vectorize(img *ColorImage) string {
 		Height: strconv.Itoa(img.Height),
 	}
 
-	addPoint := func(x, y Float) {
+	addPoint := func(x, y float.Float) {
 		svg.Children = append(svg.Children, &cleaner.SVGXMLNode{
 			XMLName: xml.Name{Local: "circle"},
 			CX:      float64(x),
@@ -342,7 +341,7 @@ func Vectorize(img *ColorImage) string {
 		})
 	}
 
-	//lineSet := NewLineSet(Float(img.Width), Float(img.Height))
+	//lineSet := NewLineSet(float.Float(img.Width), float.Float(img.Height))
 
 	addCircle := func(circle geometry.Circle) {
 		svg.Children = append(svg.Children, &cleaner.SVGXMLNode{
@@ -358,7 +357,7 @@ func Vectorize(img *ColorImage) string {
 		if len(line) < 2 {
 			return
 		}
-		/*if math32.IsNaN(line[0].X) || math32.IsNaN(line[0].Y) {
+		/*if float.IsNaN(line[0].X) || float.IsNaN(line[0].Y) {
 			panic("coordinate is NaN")
 		}*/
 		path := svgpath.SubPath{
@@ -367,7 +366,7 @@ func Vectorize(img *ColorImage) string {
 		}
 		//addPoint(line[0].X, line[0].Y)
 		for _, point := range line[1:] {
-			/*if math32.IsNaN(point.X) || math32.IsNaN(point.Y) {
+			/*if float.IsNaN(point.X) || float.IsNaN(point.Y) {
 				panic("coordinate is NaN")
 			}*/
 			path.DrawTo = append(path.DrawTo, &svgpath.DrawTo{
@@ -409,7 +408,7 @@ func Vectorize(img *ColorImage) string {
 		// Try to find a clipping rectangle to ignore boilerplate - assume the
 		// content will be separated from the boilerplate by a rectangular margin.
 
-		var minRatio Float = 0.9
+		var minRatio float.Float = 0.9
 
 		yFactor := 1
 		// Note: this factor isn't quite working, but I think it could give a good speedup.
@@ -420,14 +419,14 @@ func Vectorize(img *ColorImage) string {
 
 		// Start by finding horizontal near-rectangles
 		vMarginBF := NewBlobFinder(img.Width, img.Width, img.Height/yFactor)
-		minWidth := Float(img.Width) * minRatio
+		minWidth := float.Float(img.Width) * minRatio
 		for y := 0; y < img.Height; y += yFactor {
 			row := allRuns[color.White][y]
 			for _, run := range row {
 				width := run.X2 - run.X1
 				if width > minWidth {
 					run := *run
-					run.Y = Float(y / yFactor)
+					run.Y = float.Float(y / yFactor)
 					vMarginBF.AddRun(&run)
 				}
 			}
@@ -438,18 +437,18 @@ func Vectorize(img *ColorImage) string {
 		/*for _, blob := range vMarginBF.Blobs() {
 			outline := blob.Outline(0.1, false)
 			for i := range outline {
-				outline[i].Y *= Float(yFactor)
+				outline[i].Y *= float.Float(yFactor)
 			}
 			addBlobOutline(outline, &verticalMarginPathNode)
 		}*/
 
 		// Gather together "big enough" runs of non-background in the middle; call these the content region.
-		unblob := func(blobs []*Blob, maxY Float) Runs {
+		unblob := func(blobs []*Blob, maxY float.Float) Runs {
 			sort.Slice(blobs, func(i, j int) bool {
 				return blobs[i].Runs[0].Y < blobs[j].Runs[0].Y
 			})
 			var runs Runs
-			var yStart Float
+			var yStart float.Float
 			for _, blob := range blobs {
 				firstY, lastY := blob.Runs[0].Y, blob.Runs[len(blob.Runs)-1].Y+1
 				//fmt.Println("firstY, lastY, yStart:", firstY, lastY, yStart)
@@ -464,17 +463,17 @@ func Vectorize(img *ColorImage) string {
 			return runs
 		}
 
-		coalesce := func(runs Runs, width Float) Run {
-			firstX := math32.Inf(+1)
-			lastX := math32.Inf(-1)
+		coalesce := func(runs Runs, width float.Float) Run {
+			firstX := float.Inf(+1)
+			lastX := float.Inf(-1)
 
 			// Keep anything that's "big" or near the center
 			for _, run := range runs {
 				rw := run.X2 - run.X1
 				rc := (run.X2 + run.X1) / 2
 				if rw > width*0.1 || (width*0.2 < rc && rc < width*0.8) {
-					firstX = math32.Min(firstX, run.X1)
-					lastX = math32.Max(lastX, run.X2)
+					firstX = float.Min(firstX, run.X1)
+					lastX = float.Max(lastX, run.X2)
 				}
 			}
 
@@ -484,25 +483,25 @@ func Vectorize(img *ColorImage) string {
 		// first scan and unblob and find the vertical content range; then transform those into blobs and transpose.
 		// This will avoid unnecessary blob processing within high-cost text areas at the top and bottom of the page.
 
-		vMarginRuns := unblob(vMarginBF.Blobs(), Float(img.Height/yFactor))
-		vContentRun := coalesce(vMarginRuns, Float(img.Height/yFactor))
+		vMarginRuns := unblob(vMarginBF.Blobs(), float.Float(img.Height/yFactor))
+		vContentRun := coalesce(vMarginRuns, float.Float(img.Height/yFactor))
 		// calculate minWidth for the transposed blob finder before transforming the coords
 		minWidth = vContentRun.X2 - vContentRun.X1
-		vContentRun.X1 = math32.Max(0, (vContentRun.X1-1)*Float(yFactor)+1)
-		vContentRun.X2 *= Float(yFactor)
+		vContentRun.X1 = float.Max(0, (vContentRun.X1-1)*float.Float(yFactor)+1)
+		vContentRun.X2 *= float.Float(yFactor)
 		if false {
 			line := geometry.Polyline{
 				{X: 0, Y: vContentRun.X1},
 				{X: 0, Y: vContentRun.X2},
-				{X: Float(img.Width), Y: vContentRun.X2},
-				{X: Float(img.Width), Y: vContentRun.X1},
+				{X: float.Float(img.Width), Y: vContentRun.X2},
+				{X: float.Float(img.Width), Y: vContentRun.X1},
 				{X: 0, Y: vContentRun.X1},
 			}
 			addLineTo(line, &verticalMarginPathNode)
 		}
 		Checkpoint("finalize vContentRun")
 
-		hMarginRun := Run{X2: Float(img.Width)}
+		hMarginRun := Run{X2: float.Float(img.Width)}
 
 		// New attempt on the horizontal margins: find vertical swatches directly from the runs
 		{
@@ -510,8 +509,8 @@ func Vectorize(img *ColorImage) string {
 			yStart := int(vContentRun.X1)
 			yEnd := int(vContentRun.X2)
 			var hContentRuns Runs
-			var contentRunStart, nextX Float
-			for nextX < Float(img.Width) {
+			var contentRunStart, nextX float.Float
+			for nextX < float.Float(img.Width) {
 				// find the nearest start of run from the current x pos
 
 				// find the next x position where each row has started a run, and find the largest of all these.
@@ -527,14 +526,14 @@ func Vectorize(img *ColorImage) string {
 						}
 						if run.X1 <= nextX && nextX < run.X2 {
 							// found a run that holds scanX
-							nextX = math32.Max(nextX, row[indices[y]].X1)
+							nextX = float.Max(nextX, row[indices[y]].X1)
 							break
 						}
 						indices[y]++ // TODO: is it worth trying to do better than a linear scan here?
 					}
 					if indices[y] >= len(row) {
 						// No runs left on this row
-						nextX = Float(img.Width)
+						nextX = float.Float(img.Width)
 					}
 				}
 				//fmt.Println("...prevX=", prevX, "nextX=", nextX)
@@ -542,7 +541,7 @@ func Vectorize(img *ColorImage) string {
 					// Keep trying until all rows have a run at the same point
 					continue
 				}
-				if nextX >= Float(img.Width) {
+				if nextX >= float.Float(img.Width) {
 					// Not sure this is needed, actually
 					break
 				}
@@ -554,10 +553,10 @@ func Vectorize(img *ColorImage) string {
 				}
 
 				// Now scan forward to the earliest run end of any row
-				nextX = Float(img.Width)
+				nextX = float.Float(img.Width)
 				for y := yStart; y < yEnd; y++ {
 					run := allRuns[color.White][y][indices[y]]
-					nextX = math32.Min(nextX, run.X2)
+					nextX = float.Min(nextX, run.X2)
 				}
 				// End of white space
 				//fmt.Println("    X end:", nextX)
@@ -572,17 +571,17 @@ func Vectorize(img *ColorImage) string {
 				for _, run := range hContentRuns {
 					fmt.Println("hContentRun:", run)
 					line := geometry.Polyline{
-						{X: run.X1, Y: Float(yStart)},
-						{X: run.X2, Y: Float(yStart)},
-						{X: run.X2, Y: Float(yEnd)},
-						{X: run.X1, Y: Float(yEnd)},
-						{X: run.X1, Y: Float(yStart)},
+						{X: run.X1, Y: float.Float(yStart)},
+						{X: run.X2, Y: float.Float(yStart)},
+						{X: run.X2, Y: float.Float(yEnd)},
+						{X: run.X1, Y: float.Float(yEnd)},
+						{X: run.X1, Y: float.Float(yStart)},
 					}
 					addLineTo(line, &horizontalMarginPathNode)
 				}
 			}
 
-			hMarginRun = coalesce(hContentRuns, Float(img.Width))
+			hMarginRun = coalesce(hContentRuns, float.Float(img.Width))
 		}
 
 		fmt.Println("coalesced hMarginRun:", hMarginRun)
@@ -590,8 +589,8 @@ func Vectorize(img *ColorImage) string {
 			line := geometry.Polyline{
 				{X: hMarginRun.X1, Y: 0},
 				{X: hMarginRun.X2, Y: 0},
-				{X: hMarginRun.X2, Y: Float(img.Height)},
-				{X: hMarginRun.X1, Y: Float(img.Height)},
+				{X: hMarginRun.X2, Y: float.Float(img.Height)},
+				{X: hMarginRun.X1, Y: float.Float(img.Height)},
 				{X: hMarginRun.X1, Y: 0},
 			}
 			addLineTo(line, &horizontalMarginPathNode)
@@ -600,9 +599,9 @@ func Vectorize(img *ColorImage) string {
 
 		addLineTo(geometry.Polyline{
 			{X: 0, Y: 0},
-			{X: 0, Y: Float(img.Height)},
-			{X: Float(img.Width), Y: Float(img.Height)},
-			{X: Float(img.Width), Y: 0},
+			{X: 0, Y: float.Float(img.Height)},
+			{X: float.Float(img.Width), Y: float.Float(img.Height)},
+			{X: float.Float(img.Width), Y: 0},
 			{X: 0, Y: 0},
 		}, &verticalMarginPathNode)
 		addLineTo(geometry.Polyline{
@@ -617,11 +616,11 @@ func Vectorize(img *ColorImage) string {
 		for c, rows := range allRuns {
 			filteredRows := make([]Runs, len(rows))
 			for y, row := range rows {
-				if vContentRun.X1 <= Float(y) && Float(y) < vContentRun.X2 {
+				if vContentRun.X1 <= float.Float(y) && float.Float(y) < vContentRun.X2 {
 					for _, run := range row {
 						if hMarginRun.X1 < run.X2 && run.X1 < hMarginRun.X2 {
-							run.X1 = math32.Max(run.X1, hMarginRun.X1)
-							run.X2 = math32.Min(run.X2, hMarginRun.X2)
+							run.X1 = float.Max(run.X1, hMarginRun.X1)
+							run.X2 = float.Min(run.X2, hMarginRun.X2)
 							filteredRows[y] = append(filteredRows[y], run)
 						}
 					}
@@ -734,7 +733,7 @@ func Vectorize(img *ColorImage) string {
 
 		var polyline geometry.Polyline
 		var segs []geometry.LineSegment
-		count := Float(len(blob.Runs))
+		count := float.Float(len(blob.Runs))
 		wAvg := blob.Runs.AverageWidth()
 		used := false
 		if wAvg*1.1 < count {
@@ -878,7 +877,7 @@ func Vectorize(img *ColorImage) string {
 
 			var polyline geometry.Polyline
 			var segs []geometry.LineSegment
-			count := Float(len(blob.Runs))
+			count := float.Float(len(blob.Runs))
 			wAvg := blob.Runs.AverageWidth()
 			if wAvg*1.1 < count {
 				polyline, segs = blob.ToPolyline()
@@ -922,7 +921,7 @@ func FindAllHorizontalRuns(img *ColorImage) [][]Runs {
 			allRuns[i] = make([]Runs, img.Height)
 		}
 
-		allRuns[i][y] = append(allRuns[i][y], &Run{X1: Float(runStart), X2: Float(x), Y: Float(y)})
+		allRuns[i][y] = append(allRuns[i][y], &Run{X1: float.Float(runStart), X2: float.Float(x), Y: float.Float(y)})
 	}
 
 	imgIndex := 0
