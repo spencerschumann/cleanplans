@@ -1,4 +1,4 @@
-//go:build float32
+//go:build !float64
 
 package float
 
